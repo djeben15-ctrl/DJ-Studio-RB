@@ -212,8 +212,8 @@ public:
     void resized() override
     {
         title.setBounds(0, 18, getWidth(), 55);
-        deckA.setBounds(35, 100, 480, 390);
-        deckB.setBounds(585, 100, 480, 390);
+        deckA.setBounds(35, 100, 480, 470);
+        deckB.setBounds(585, 100, 480, 470);
 
         loadA.setBounds(65, 155, 120, 42);
         playA.setBounds(195, 155, 100, 42);
@@ -228,8 +228,7 @@ public:
         eqLowA.setBounds(65, 398, 125, 28);
         eqMidA.setBounds(205, 398, 125, 28);
         eqHighA.setBounds(345, 398, 130, 28);
-        jogBackA.setBounds(150, 438, 100, 32);
-        jogForwardA.setBounds(270, 438, 100, 32);
+        jogWheelA.setBounds(220, 432, 110, 110);
 
         loadB.setBounds(615, 155, 120, 42);
         playB.setBounds(745, 155, 100, 42);
@@ -244,12 +243,11 @@ public:
         eqLowB.setBounds(615, 398, 125, 28);
         eqMidB.setBounds(755, 398, 125, 28);
         eqHighB.setBounds(895, 398, 130, 28);
-        jogBackB.setBounds(700, 438, 100, 32);
-        jogForwardB.setBounds(820, 438, 100, 32);
+        jogWheelB.setBounds(770, 432, 110, 110);
 
-        mixerLabel.setBounds(350, 515, 400, 30);
-        crossfader.setBounds(300, 550, 500, 45);
-        status.setBounds(100, 620, 900, 30);
+        mixerLabel.setBounds(350, 575, 400, 25);
+        crossfader.setBounds(300, 600, 500, 40);
+        status.setBounds(100, 650, 900, 25);
     }
 
 private:
@@ -273,10 +271,7 @@ private:
     juce::TextButton cueB{"CUE / INICIO"};
     juce::Label timeA, timeB, volumeLabelA, volumeLabelB, eqTitleA, eqTitleB;
     juce::Slider eqLowA, eqMidA, eqHighA, eqLowB, eqMidB, eqHighB;
-    juce::TextButton jogBackA{"JOG -"};
-    juce::TextButton jogForwardA{"JOG +"};
-    juce::TextButton jogBackB{"JOG -"};
-    juce::TextButton jogForwardB{"JOG +"};
+    VirtualJogWheel jogWheelA, jogWheelB;
     float lowAlpha = 0.03f, midAlpha = 0.3f;
     float lowStateA[2] = { 0.0f, 0.0f }, midStateA[2] = { 0.0f, 0.0f };
     float lowStateB[2] = { 0.0f, 0.0f }, midStateB[2] = { 0.0f, 0.0f };
