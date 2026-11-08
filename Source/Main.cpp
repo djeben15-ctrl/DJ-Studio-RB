@@ -1,6 +1,97 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <cmath>
 
+class VirtualJogWheel : public juce::Component
+{
+public:
+    std::function<void(double)> onPositionChange;
+
+    void setPosition(double newPosition)
+    {
+        position = juce::jlimit(0.0, 1.0, newPosition);
+        if (!dragging)
+            repaint();
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        auto area = getLocalBounds().toFloat().reduced(5.0f);
+        const auto centre = area.getCentre();
+        const float radius = juce::jmin(area.getWidth(), area.getHeight()) * 0.5f;
+
+        g.setColour(juce::Colour(9, 12, 18));
+        g.fillEllipse(centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f);
+        g.setColour(juce::Colour(70, 83, 98));
+        g.drawEllipse(centre.x - radius, centre.y - radius, radius * 2.0f, radius * 2.0f, 3.0f);
+
+        for (int ring = 1; ring <= 4; ++ring)
+        {
+            const float r = radius * (0.28f + 0.13f * ring);
+            g.setColour(juce::Colour(35 + ring * 5, 48 + ring * 5, 61 + ring * 5));
+            g.drawEllipse(centre.x - r, centre.y - r, r * 2.0f, r * 2.0f, 1.2f);
+        }
+
+        g.setColour(juce::Colour(35, 210, 205));
+        const float markerAngle = static_cast<float>(position * juce::MathConstants<double>::twoPi);
+        const juce::Point<float> marker(centre.x + std::sin(markerAngle) * radius * 0.82f,
+                                        centre.y - std::cos(markerAngle) * radius * 0.82f);
+        g.drawLine(centre.x, centre.y, marker.x, marker.y, 3.0f);
+        g.fillEllipse(marker.x - 4.0f, marker.y - 4.0f, 8.0f, 8.0f);
+
+        const float hub = radius * 0.27f;
+        g.setColour(juce::Colour(37, 49, 62));
+        g.fillEllipse(centre.x - hub, centre.y - hub, hub * 2.0f, hub * 2.0f);
+        g.setColour(juce::Colour(190, 205, 220));
+        g.drawEllipse(centre.x - hub, centre.y - hub, hub * 2.0f, hub * 2.0f, 1.5f);
+        g.setFont(juce::Font(13.0f, juce::Font::bold));
+        g.drawFittedText("DJ", getLocalBounds(), juce::Justification::centred, 1);
+    }
+
+    void mouseDown(const juce::MouseEvent& event) override
+    {
+        dragging = true;
+        startAngle = angleAt(event.position);
+        startPosition = position;
+    }
+
+    void mouseDrag(const juce::MouseEvent& event) override
+    {
+        if (!dragging)
+            return;
+
+        double delta = angleAt(event.position) - startAngle;
+        if (delta > juce::MathConstants<double>::pi)
+            delta -= juce::MathConstants<double>::twoPi;
+        else if (delta < -juce::MathConstants<double>::pi)
+            delta += juce::MathConstants<double>::twoPi;
+
+        position = juce::jlimit(0.0, 1.0,
+                                startPosition + delta / juce::MathConstants<double>::twoPi * 0.30);
+        repaint();
+        if (onPositionChange)
+            onPositionChange(position);
+    }
+
+    void mouseUp(const juce::MouseEvent&) override
+    {
+        dragging = false;
+        repaint();
+    }
+
+private:
+    double position = 0.0;
+    double startPosition = 0.0;
+    double startAngle = 0.0;
+    bool dragging = false;
+
+    double angleAt(juce::Point<float> point) const
+    {
+        const auto centre = getLocalBounds().toFloat().getCentre();
+        return std::atan2(static_cast<double>(point.y - centre.y),
+                          static_cast<double>(point.x - centre.x));
+    }
+};
+
 class DJStudioRB : public juce::AudioAppComponent, private juce::Timer
 {
 public:
@@ -261,17 +352,18 @@ private:
         cueA.onClick = [this] { cueDeck(0); };
         cueB.onClick = [this] { cueDeck(1); };
 
-        jogBackA.onClick = [this] { nudgeDeck(0, -0.10); };
-        jogForwardA.onClick = [this] { nudgeDeck(0, 0.10); };
-        jogBackB.onClick = [this] { nudgeDeck(1, -0.10); };
-        jogForwardB.onClick = [this] { nudgeDeck(1, 0.10); };
-
-        for (auto* button : { &jogBackA, &jogForwardA, &jogBackB, &jogForwardB })
+        jogWheelA.onPositionChange = [this](double p)
         {
-            button->setColour(juce::TextButton::buttonColourId, juce::Colour(35, 75, 82));
-            button->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
-            addAndMakeVisible(button);
-        }
+            const double length = transportA.getLengthInSeconds();
+            if (length > 0.0) transportA.setPosition(p * length);
+        };
+        jogWheelB.onPositionChange = [this](double p)
+        {
+            const double length = transportB.getLengthInSeconds();
+            if (length > 0.0) transportB.setPosition(p * length);
+        };
+        addAndMakeVisible(jogWheelA);
+        addAndMakeVisible(jogWheelB);
         for (auto* button : { &cueA, &cueB })
         {
             button->setColour(juce::TextButton::buttonColourId, juce::Colour(45, 55, 70));
@@ -484,7 +576,7 @@ class DJStudioRBApplication : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "DJ Studio RB"; }
-    const juce::String getApplicationVersion() override { return "0.5.0"; }
+    const juce::String getApplicationVersion() override { return "0.6.0"; }
 
     void initialise(const juce::String&) override { window.reset(new MainWindow()); }
     void shutdown() override { window = nullptr; }
