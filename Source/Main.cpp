@@ -68,15 +68,19 @@ public:
 
         position = juce::jlimit(0.0, 1.0,
                                 startPosition + delta / juce::MathConstants<double>::twoPi * 0.30);
+        // While dragging, update only the platter graphic. Do not seek the
+        // audio transport on every mouse event: repeated hard seeks create clicks.
         repaint();
-        if (onPositionChange)
-            onPositionChange(position);
     }
 
     void mouseUp(const juce::MouseEvent&) override
     {
         dragging = false;
         repaint();
+
+        // Commit exactly one seek when the user releases the jog wheel.
+        if (onPositionChange)
+            onPositionChange(position);
     }
 
 private:
