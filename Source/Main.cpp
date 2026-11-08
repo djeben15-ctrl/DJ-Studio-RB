@@ -342,11 +342,12 @@ private:
     juce::AudioTransportSource transportA, transportB;
     std::unique_ptr<juce::AudioFormatReaderSource> readerA, readerB;
     juce::AudioBuffer<float> scratchA, scratchB;
-    static constexpr int jogFadeLength = 480; // about 10 ms at 48 kHz
+    static constexpr int jogFadeLength = 3840; // about 80 ms at 48 kHz
     std::atomic<double> jogPendingPositionA{ 0.0 }, jogPendingPositionB{ 0.0 };
     std::atomic<bool> jogSeekRequestedA{ false }, jogSeekRequestedB{ false };
     std::atomic<bool> jogSeekReadyA{ false }, jogSeekReadyB{ false };
     std::atomic<bool> jogResumeRequestA{ false }, jogResumeRequestB{ false };
+    std::atomic<bool> jogResumePlaybackA{ false }, jogResumePlaybackB{ false };
     // These values are owned by the audio callback thread.
     float jogGainA = 1.0f, jogGainB = 1.0f;
     int jogFadeRemainingA = 0, jogFadeRemainingB = 0;
@@ -449,6 +450,7 @@ private:
             const double length = transportA.getLengthInSeconds();
             if (length > 0.0)
             {
+                jogResumePlaybackA.store(transportA.isPlaying());
                 jogPendingPositionA.store(p * length);
                 jogSeekRequestedA.store(true);
             }
@@ -458,6 +460,7 @@ private:
             const double length = transportB.getLengthInSeconds();
             if (length > 0.0)
             {
+                jogResumePlaybackB.store(transportB.isPlaying());
                 jogPendingPositionB.store(p * length);
                 jogSeekRequestedB.store(true);
             }
@@ -497,12 +500,24 @@ private:
         // Apply each seek only after the audio thread has faded that deck out.
         if (jogSeekReadyA.exchange(false))
         {
+            // Stop the decoder before changing its read position. This avoids
+            // racing the audio callback while the reader jumps to another frame.
+            transportA.stop();
             transportA.setPosition(jogPendingPositionA.load());
+            lowStateA[0] = lowStateA[1] = 0.0f;
+            midStateA[0] = midStateA[1] = 0.0f;
+            if (jogResumePlaybackA.exchange(false))
+                transportA.start();
             jogResumeRequestA.store(true);
         }
         if (jogSeekReadyB.exchange(false))
         {
+            transportB.stop();
             transportB.setPosition(jogPendingPositionB.load());
+            lowStateB[0] = lowStateB[1] = 0.0f;
+            midStateB[0] = midStateB[1] = 0.0f;
+            if (jogResumePlaybackB.exchange(false))
+                transportB.start();
             jogResumeRequestB.store(true);
         }
 
