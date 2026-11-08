@@ -294,7 +294,7 @@ public:
 
         auto setupMixerFader = [this](juce::Slider& slider)
         {
-            slider.setSliderStyle(juce::Slider::LinearVertical);
+            slider.setSliderStyle(juce::Slider::LinearHorizontal);
             slider.setRange(0.0, 1.0, 0.01);
             slider.setValue(1.0);
             slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
@@ -579,48 +579,60 @@ public:
         libraryButton.setBounds(getWidth() - 175, 28, 140, 34);
         libraryPanel.setBounds(getLocalBounds());
 
-        deckA.setBounds(20, 100, 460, 470);
-        deckB.setBounds(800, 100, 460, 470);
+        deckA.setBounds(20, 100, 430, 470);
+        deckB.setBounds(830, 100, 430, 470);
 
-        loadA.setBounds(50, 155, 120, 42);
-        playA.setBounds(180, 155, 100, 42);
-        stopA.setBounds(290, 155, 100, 42);
-        trackA.setBounds(50, 210, 400, 48);
-        timeA.setBounds(50, 265, 400, 24);
-        seekA.setBounds(50, 290, 400, 24);
-        cueA.setBounds(50, 330, 90, 34);
-        volumeLabelA.setBounds(155, 330, 90, 34);
-        volumeA.setBounds(245, 330, 205, 34);
-        eqTitleA.setBounds(50, 372, 400, 20);
-        eqLowA.setBounds(50, 398, 120, 28);
-        eqMidA.setBounds(185, 398, 120, 28);
-        eqHighA.setBounds(320, 398, 130, 28);
-        jogWheelA.setBounds(195, 432, 110, 110);
+        loadA.setBounds(45, 155, 115, 42);
+        playA.setBounds(170, 155, 95, 42);
+        stopA.setBounds(275, 155, 95, 42);
+        trackA.setBounds(45, 210, 380, 48);
+        timeA.setBounds(45, 265, 380, 24);
+        seekA.setBounds(45, 290, 380, 24);
+        cueA.setBounds(45, 330, 85, 34);
+        volumeLabelA.setBounds(140, 330, 85, 34);
+        volumeA.setBounds(225, 330, 200, 34);
+        eqTitleA.setBounds(45, 372, 380, 20);
+        eqLowA.setBounds(45, 398, 100, 28);
+        eqMidA.setBounds(170, 398, 100, 28);
+        eqHighA.setBounds(295, 398, 130, 28);
+        jogWheelA.setBounds(180, 432, 110, 110);
 
-        loadB.setBounds(830, 155, 120, 42);
-        playB.setBounds(960, 155, 100, 42);
-        stopB.setBounds(1070, 155, 100, 42);
-        trackB.setBounds(830, 210, 400, 48);
-        timeB.setBounds(830, 265, 400, 24);
-        seekB.setBounds(830, 290, 400, 24);
-        cueB.setBounds(830, 330, 90, 34);
-        volumeLabelB.setBounds(935, 330, 90, 34);
-        volumeB.setBounds(1025, 330, 205, 34);
-        eqTitleB.setBounds(830, 372, 400, 20);
-        eqLowB.setBounds(830, 398, 120, 28);
-        eqMidB.setBounds(965, 398, 120, 28);
-        eqHighB.setBounds(1100, 398, 130, 28);
-        jogWheelB.setBounds(975, 432, 110, 110);
+        loadB.setBounds(855, 155, 115, 42);
+        playB.setBounds(980, 155, 95, 42);
+        stopB.setBounds(1085, 155, 95, 42);
+        trackB.setBounds(855, 210, 380, 48);
+        timeB.setBounds(855, 265, 380, 24);
+        seekB.setBounds(855, 290, 380, 24);
+        cueB.setBounds(855, 330, 85, 34);
+        volumeLabelB.setBounds(950, 330, 85, 34);
+        volumeB.setBounds(1035, 330, 200, 34);
+        eqTitleB.setBounds(855, 372, 380, 20);
+        eqLowB.setBounds(855, 398, 100, 28);
+        eqMidB.setBounds(980, 398, 100, 28);
+        eqHighB.setBounds(1105, 398, 130, 28);
+        jogWheelB.setBounds(990, 432, 110, 110);
 
-        mixerPanel.setBounds(510, 105, 260, 455);
-        channelLabelA.setBounds(525, 145, 45, 24);
-        channelLabelB.setBounds(590, 145, 45, 24);
-        masterLabel.setBounds(690, 145, 65, 24);
-        channelFaderA.setBounds(525, 170, 45, 235);
-        channelFaderB.setBounds(590, 170, 45, 235);
-        masterFader.setBounds(700, 170, 45, 235);
-        mixerLabel.setBounds(520, 425, 240, 25);
-        crossfader.setBounds(530, 455, 220, 42);
+        mixerPanel.setBounds(470, 105, 340, 455);
+        channelLabelA.setBounds(485, 140, 45, 22);
+        channelLabelB.setBounds(485, 245, 45, 22);
+        masterLabel.setBounds(485, 355, 70, 22);
+        eqLabelLowA.setBounds(530, 140, 75, 22);
+        eqLabelMidA.setBounds(610, 140, 75, 22);
+        eqLabelHighA.setBounds(690, 140, 75, 22);
+        eqLowA.setBounds(530, 162, 75, 78);
+        eqMidA.setBounds(610, 162, 75, 78);
+        eqHighA.setBounds(690, 162, 75, 78);
+        eqLabelLowB.setBounds(530, 245, 75, 22);
+        eqLabelMidB.setBounds(610, 245, 75, 22);
+        eqLabelHighB.setBounds(690, 245, 75, 22);
+        eqLowB.setBounds(530, 267, 75, 78);
+        eqMidB.setBounds(610, 267, 75, 78);
+        eqHighB.setBounds(690, 267, 75, 78);
+        channelFaderA.setBounds(555, 355, 95, 24);
+        channelFaderB.setBounds(555, 385, 95, 24);
+        masterFader.setBounds(555, 415, 95, 24);
+        mixerLabel.setBounds(485, 455, 310, 22);
+        crossfader.setBounds(490, 480, 300, 42);
         status.setBounds(100, 650, 1080, 25);
     }
 
@@ -649,6 +661,7 @@ private:
     std::unique_ptr<juce::FileChooser> chooserA, chooserB;
 
     juce::Label title, mixerLabel, status, channelLabelA, channelLabelB, masterLabel;
+    juce::Label eqLabelLowA, eqLabelMidA, eqLabelHighA, eqLabelLowB, eqLabelMidB, eqLabelHighB;
     juce::GroupComponent mixerPanel;
     juce::Slider channelFaderA, channelFaderB, masterFader;
     juce::TextButton libraryButton;
@@ -765,24 +778,35 @@ private:
         setupVolume(volumeA);
         setupVolume(volumeB);
 
-        auto setupEq = [this](juce::Slider& slider, juce::Label& label, const juce::String& text)
+        auto setupEq = [this](juce::Slider& slider)
+        {
+            slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            slider.setRange(0.0, 2.0, 0.01);
+            slider.setValue(1.0);
+            slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 42, 18);
+            slider.setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(35, 210, 205));
+            slider.setColour(juce::Slider::thumbColourId, juce::Colours::white);
+            slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);
+            addAndMakeVisible(slider);
+        };
+        for (auto* slider : { &eqLowA, &eqMidA, &eqHighA, &eqLowB, &eqMidB, &eqHighB })
+            setupEq(*slider);
+
+        auto setupEqLabel = [this](juce::Label& label, const juce::String& text)
         {
             label.setText(text, juce::dontSendNotification);
             label.setJustificationType(juce::Justification::centred);
             label.setColour(juce::Label::textColourId, juce::Colour(190, 200, 215));
             addAndMakeVisible(label);
-            slider.setRange(0.0, 2.0, 0.01);
-            slider.setValue(1.0);
-            slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-            slider.setColour(juce::Slider::trackColourId, juce::Colour(35, 210, 205));
-            addAndMakeVisible(slider);
         };
-        setupEq(eqLowA, eqTitleA, "ECUALIZADOR  LOW / MID / HIGH");
-        setupEq(eqMidA, eqTitleA, "ECUALIZADOR  LOW / MID / HIGH");
-        setupEq(eqHighA, eqTitleA, "ECUALIZADOR  LOW / MID / HIGH");
-        setupEq(eqLowB, eqTitleB, "ECUALIZADOR  LOW / MID / HIGH");
-        setupEq(eqMidB, eqTitleB, "ECUALIZADOR  LOW / MID / HIGH");
-        setupEq(eqHighB, eqTitleB, "ECUALIZADOR  LOW / MID / HIGH");
+        setupEqLabel(eqLabelLowA, "LOW");
+        setupEqLabel(eqLabelMidA, "MID");
+        setupEqLabel(eqLabelHighA, "HIGH");
+        setupEqLabel(eqLabelLowB, "LOW");
+        setupEqLabel(eqLabelMidB, "MID");
+        setupEqLabel(eqLabelHighB, "HIGH");
+        eqTitleA.setVisible(false);
+        eqTitleB.setVisible(false);
 
         cueA.onClick = [this] { cueDeck(0); };
         cueB.onClick = [this] { cueDeck(1); };
