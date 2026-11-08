@@ -15,7 +15,7 @@ permissions:
 jobs:
   build:
     name: Build Intel app for macOS 10.13+
-    runs-on: macos-14
+    runs-on: macos-15-intel
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
