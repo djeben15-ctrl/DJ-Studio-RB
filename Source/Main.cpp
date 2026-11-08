@@ -20,10 +20,10 @@ public:
 
         loadA.onClick = [this] { loadTrack(0); };
         loadB.onClick = [this] { loadTrack(1); };
-        playA.onClick = [this] { transportA.start(); };
-        playB.onClick = [this] { transportB.start(); };
-        stopA.onClick = [this] { transportA.stop(); transportA.setPosition(0.0); };
-        stopB.onClick = [this] { transportB.stop(); transportB.setPosition(0.0); };
+        playA.onClick = [this] { startDeck(0); };
+        playB.onClick = [this] { startDeck(1); };
+        stopA.onClick = [this] { stopDeck(0); };
+        stopB.onClick = [this] { stopDeck(1); };
 
         crossfader.setRange(0.0, 1.0, 0.001);
         crossfader.setValue(0.5);
@@ -162,6 +162,43 @@ private:
         addAndMakeVisible(track);
     }
 
+    void startDeck(int deckNumber)
+    {
+        auto* reader = (deckNumber == 0 ? readerA.get() : readerB.get());
+        auto& transport = (deckNumber == 0 ? transportA : transportB);
+        auto& playButton = (deckNumber == 0 ? playA : playB);
+
+        if (reader == nullptr)
+        {
+            status.setText(deckNumber == 0
+                ? "DECK A: primero carga una canción."
+                : "DECK B: primero carga una canción.", juce::dontSendNotification);
+            return;
+        }
+
+        if (transport.getLengthInSeconds() > 0.0 &&
+            transport.getCurrentPosition() >= transport.getLengthInSeconds())
+            transport.setPosition(0.0);
+
+        transport.start();
+        playButton.setButtonText("PLAYING");
+        status.setText(deckNumber == 0
+            ? "DECK A: orden de reproducción enviada al motor de audio."
+            : "DECK B: orden de reproducción enviada al motor de audio.",
+            juce::dontSendNotification);
+    }
+
+    void stopDeck(int deckNumber)
+    {
+        auto& transport = (deckNumber == 0 ? transportA : transportB);
+        auto& playButton = (deckNumber == 0 ? playA : playB);
+        transport.stop();
+        transport.setPosition(0.0);
+        playButton.setButtonText("PLAY");
+        status.setText(deckNumber == 0 ? "DECK A detenido." : "DECK B detenido.",
+                       juce::dontSendNotification);
+    }
+
     void loadTrack(int deckNumber)
     {
         auto& chooser = (deckNumber == 0 ? chooserA : chooserB);
@@ -203,6 +240,7 @@ private:
             readerA = std::move(newSource);
             transportA.setSource(readerA.get(), 0, nullptr, sourceSampleRate);
             trackA.setText(file.getFileName(), juce::dontSendNotification);
+            playA.setButtonText("PLAY");
         }
         else
         {
@@ -212,6 +250,7 @@ private:
             readerB = std::move(newSource);
             transportB.setSource(readerB.get(), 0, nullptr, sourceSampleRate);
             trackB.setText(file.getFileName(), juce::dontSendNotification);
+            playB.setButtonText("PLAY");
         }
 
         status.setText("Pista cargada. Pulsa PLAY para reproducir.", juce::dontSendNotification);
