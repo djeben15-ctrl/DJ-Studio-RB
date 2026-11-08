@@ -1,99 +1,226 @@
-
 #include <juce_audio_utils/juce_audio_utils.h>
 
-class DJStudioRB : public juce::Component
+class DJStudioRB : public juce::AudioAppComponent
 {
 public:
     DJStudioRB()
     {
+        formatManager.registerBasicFormats();
+
         setSize(1100, 700);
+        setAudioChannels(0, 2);
 
         title.setText("DJ STUDIO RB", juce::dontSendNotification);
         title.setFont(juce::Font(30.0f, juce::Font::bold));
         title.setJustificationType(juce::Justification::centred);
         addAndMakeVisible(title);
 
-        setupDeck(deckA, "DECK A");
-        setupDeck(deckB, "DECK B");
+        setupDeck(deckA, "DECK A", loadA, playA, stopA, trackA);
+        setupDeck(deckB, "DECK B", loadB, playB, stopB, trackB);
 
-        crossfader.setRange(0.0, 1.0);
+        loadA.onClick = [this] { loadTrack(0); };
+        loadB.onClick = [this] { loadTrack(1); };
+        playA.onClick = [this] { transportA.start(); };
+        playB.onClick = [this] { transportB.start(); };
+        stopA.onClick = [this] { transportA.stop(); transportA.setPosition(0.0); };
+        stopB.onClick = [this] { transportB.stop(); transportB.setPosition(0.0); };
+
+        crossfader.setRange(0.0, 1.0, 0.001);
         crossfader.setValue(0.5);
-        crossfader.setTextBoxStyle(
-            juce::Slider::NoTextBox, false, 0, 0);
+        crossfader.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+        crossfader.setColour(juce::Slider::thumbColourId, juce::Colour(35, 210, 205));
         addAndMakeVisible(crossfader);
 
-        mixerLabel.setText("CROSSFADER", juce::dontSendNotification);
-        mixerLabel.setJustificationType(
-            juce::Justification::centred);
+        mixerLabel.setText("CROSSFADER  A  ◀──────●──────▶  B", juce::dontSendNotification);
+        mixerLabel.setJustificationType(juce::Justification::centred);
         addAndMakeVisible(mixerLabel);
+
+        status.setText("Listo. Carga una canción en cada deck.", juce::dontSendNotification);
+        status.setJustificationType(juce::Justification::centred);
+        status.setColour(juce::Label::textColourId, juce::Colour(180, 190, 205));
+        addAndMakeVisible(status);
+    }
+
+    ~DJStudioRB() override
+    {
+        shutdownAudio();
+        transportA.setSource(nullptr);
+        transportB.setSource(nullptr);
+    }
+
+    void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override
+    {
+        transportA.prepareToPlay(samplesPerBlockExpected, sampleRate);
+        transportB.prepareToPlay(samplesPerBlockExpected, sampleRate);
+        scratchA.setSize(2, samplesPerBlockExpected);
+        scratchB.setSize(2, samplesPerBlockExpected);
+    }
+
+    void getNextAudioBlock(const juce::AudioSourceChannelInfo& info) override
+    {
+        if (info.buffer == nullptr)
+            return;
+
+        const int channels = juce::jmin(2, info.buffer->getNumChannels());
+        if (info.numSamples > scratchA.getNumSamples())
+        {
+            scratchA.setSize(2, info.numSamples, false, false, true);
+            scratchB.setSize(2, info.numSamples, false, false, true);
+        }
+
+        scratchA.clear(0, info.numSamples);
+        scratchB.clear(0, info.numSamples);
+
+        juce::AudioSourceChannelInfo blockA(&scratchA, 0, info.numSamples);
+        juce::AudioSourceChannelInfo blockB(&scratchB, 0, info.numSamples);
+        transportA.getNextAudioBlock(blockA);
+        transportB.getNextAudioBlock(blockB);
+
+        const float blend = static_cast<float>(crossfader.getValue());
+        const float gainA = 1.0f - blend;
+        const float gainB = blend;
+
+        for (int channel = 0; channel < channels; ++channel)
+        {
+            info.buffer->clear(channel, info.startSample, info.numSamples);
+            info.buffer->addFrom(channel, info.startSample, scratchA, channel, 0,
+                                 info.numSamples, gainA);
+            info.buffer->addFrom(channel, info.startSample, scratchB, channel, 0,
+                                 info.numSamples, gainB);
+        }
+    }
+
+    void releaseResources() override
+    {
+        transportA.releaseResources();
+        transportB.releaseResources();
     }
 
     void paint(juce::Graphics& g) override
     {
         g.fillAll(juce::Colour(18, 20, 27));
         g.setColour(juce::Colour(35, 39, 49));
-        g.fillRoundedRectangle(
-            getLocalBounds().toFloat().reduced(15), 15.0f);
+        g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(15), 15.0f);
     }
 
     void resized() override
     {
-        title.setBounds(0, 20, getWidth(), 55);
+        title.setBounds(0, 18, getWidth(), 55);
+        deckA.setBounds(35, 100, 480, 390);
+        deckB.setBounds(585, 100, 480, 390);
 
-        deckA.setBounds(35, 100, 480, 420);
-        deckB.setBounds(585, 100, 480, 420);
+        loadA.setBounds(65, 155, 120, 42);
+        playA.setBounds(195, 155, 100, 42);
+        stopA.setBounds(305, 155, 100, 42);
+        trackA.setBounds(65, 220, 410, 90);
 
-        mixerLabel.setBounds(400, 550, 300, 30);
-        crossfader.setBounds(350, 580, 400, 45);
+        loadB.setBounds(615, 155, 120, 42);
+        playB.setBounds(745, 155, 100, 42);
+        stopB.setBounds(855, 155, 100, 42);
+        trackB.setBounds(615, 220, 410, 90);
+
+        mixerLabel.setBounds(350, 515, 400, 30);
+        crossfader.setBounds(300, 550, 500, 45);
+        status.setBounds(100, 620, 900, 30);
     }
 
 private:
-    juce::Label title;
-    juce::Label mixerLabel;
-    juce::Slider crossfader;
-    juce::GroupComponent deckA;
-    juce::GroupComponent deckB;
+    juce::AudioFormatManager formatManager;
+    juce::AudioTransportSource transportA, transportB;
+    std::unique_ptr<juce::AudioFormatReaderSource> readerA, readerB;
+    juce::AudioBuffer<float> scratchA, scratchB;
 
-    void setupDeck(juce::GroupComponent& deck,
-                   const juce::String& name)
+    juce::Label title, mixerLabel, status;
+    juce::GroupComponent deckA, deckB;
+    juce::TextButton loadA{"CARGAR"};
+    juce::TextButton playA{"PLAY"};
+    juce::TextButton stopA{"STOP"};
+    juce::TextButton loadB{"CARGAR"};
+    juce::TextButton playB{"PLAY"};
+    juce::TextButton stopB{"STOP"};
+    juce::Label trackA, trackB;
+    juce::Slider crossfader;
+
+    void setupDeck(juce::GroupComponent& deck, const juce::String& name,
+                   juce::TextButton& load, juce::TextButton& play,
+                   juce::TextButton& stop, juce::Label& track)
     {
         deck.setText(name);
         addAndMakeVisible(deck);
+
+        for (auto* button : { &load, &play, &stop })
+        {
+            button->setColour(juce::TextButton::buttonColourId, juce::Colour(45, 55, 70));
+            button->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+            addAndMakeVisible(button);
+        }
+
+        track.setText("Ninguna pista cargada", juce::dontSendNotification);
+        track.setJustificationType(juce::Justification::centred);
+        track.setColour(juce::Label::textColourId, juce::Colour(190, 200, 215));
+        addAndMakeVisible(track);
+    }
+
+    void loadTrack(int deckNumber)
+    {
+        juce::FileChooser chooser("Selecciona una canción de audio",
+                                  juce::File::getSpecialLocation(juce::File::userMusicDirectory),
+                                  "*.mp3;*.wav;*.aif;*.aiff;*.flac;*.ogg");
+
+        if (!chooser.browseForFileToOpen())
+            return;
+
+        const juce::File file = chooser.getResult();
+        std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
+
+        if (reader == nullptr)
+        {
+            status.setText("No se pudo abrir ese formato de audio.", juce::dontSendNotification);
+            return;
+        }
+
+        std::unique_ptr<juce::AudioFormatReaderSource> newSource(
+            new juce::AudioFormatReaderSource(reader.release(), true));
+
+        if (deckNumber == 0)
+        {
+            transportA.stop();
+            transportA.setSource(nullptr);
+            readerA.reset();
+            readerA = std::move(newSource);
+            transportA.setSource(readerA.get(), 0, nullptr, readerA->getAudioFormatReader()->sampleRate);
+            trackA.setText(file.getFileName(), juce::dontSendNotification);
+        }
+        else
+        {
+            transportB.stop();
+            transportB.setSource(nullptr);
+            readerB.reset();
+            readerB = std::move(newSource);
+            transportB.setSource(readerB.get(), 0, nullptr, readerB->getAudioFormatReader()->sampleRate);
+            trackB.setText(file.getFileName(), juce::dontSendNotification);
+        }
+
+        status.setText("Pista cargada. Pulsa PLAY para reproducir.", juce::dontSendNotification);
     }
 };
 
 class DJStudioRBApplication : public juce::JUCEApplication
 {
 public:
-    const juce::String getApplicationName() override
-    {
-        return "DJ Studio RB";
-    }
+    const juce::String getApplicationName() override { return "DJ Studio RB"; }
+    const juce::String getApplicationVersion() override { return "0.2.0"; }
 
-    const juce::String getApplicationVersion() override
-    {
-        return "0.1.0";
-    }
-
-    void initialise(const juce::String&) override
-    {
-        window.reset(new MainWindow());
-    }
-
-    void shutdown() override
-    {
-        window = nullptr;
-    }
+    void initialise(const juce::String&) override { window.reset(new MainWindow()); }
+    void shutdown() override { window = nullptr; }
 
 private:
     class MainWindow : public juce::DocumentWindow
     {
     public:
         MainWindow()
-            : DocumentWindow(
-                "DJ Studio RB",
-                juce::Colour(18, 20, 27),
-                DocumentWindow::allButtons)
+            : DocumentWindow("DJ Studio RB", juce::Colour(18, 20, 27),
+                             DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar(true);
             setContentOwned(new DJStudioRB(), true);
