@@ -1,11 +1,14 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <cmath>
 #include <atomic>
+#include <limits>
 
 class VirtualJogWheel : public juce::Component
 {
 public:
-    std::function<void(double)> onPositionChange;
+    std::function<void()> onScratchStart;
+    std::function<void(double, double)> onScratchMove;
+    std::function<void(double)> onScratchEnd;
 
     void setPosition(double newPosition)
     {
@@ -53,6 +56,9 @@ public:
         dragging = true;
         startAngle = angleAt(event.position);
         startPosition = position;
+        lastDragTime = juce::Time::getMillisecondCounterHiRes();
+        if (onScratchStart)
+            onScratchStart();
     }
 
     void mouseDrag(const juce::MouseEvent& event) override
@@ -66,10 +72,15 @@ public:
         else if (delta < -juce::MathConstants<double>::pi)
             delta += juce::MathConstants<double>::twoPi;
 
+        const double previousPosition = position;
         position = juce::jlimit(0.0, 1.0,
                                 startPosition + delta / juce::MathConstants<double>::twoPi * 0.30);
-        // While dragging, update only the platter graphic. Do not seek the
-        // audio transport on every mouse event: repeated hard seeks create clicks.
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        const double elapsed = juce::jmax(0.001, (now - lastDragTime) / 1000.0);
+        const double speed = (position - previousPosition) / elapsed;
+        lastDragTime = now;
+        if (onScratchMove)
+            onScratchMove(position, speed);
         repaint();
     }
 
@@ -77,10 +88,8 @@ public:
     {
         dragging = false;
         repaint();
-
-        // Commit exactly one seek when the user releases the jog wheel.
-        if (onPositionChange)
-            onPositionChange(position);
+        if (onScratchEnd)
+            onScratchEnd(position);
     }
 
 private:
@@ -88,6 +97,7 @@ private:
     double startPosition = 0.0;
     double startAngle = 0.0;
     bool dragging = false;
+    double lastDragTime = 0.0;
 
     double angleAt(juce::Point<float> point) const
     {
@@ -152,6 +162,7 @@ public:
     {
         transportA.prepareToPlay(samplesPerBlockExpected, sampleRate);
         transportB.prepareToPlay(samplesPerBlockExpected, sampleRate);
+        outputSampleRate = sampleRate;
         lowAlpha = 1.0f - std::exp(-2.0f * juce::MathConstants<float>::pi * 250.0f / static_cast<float>(sampleRate));
         midAlpha = 1.0f - std::exp(-2.0f * juce::MathConstants<float>::pi * 4000.0f / static_cast<float>(sampleRate));
         scratchA.setSize(2, samplesPerBlockExpected);
@@ -177,6 +188,11 @@ public:
         juce::AudioSourceChannelInfo blockB(&scratchB, 0, info.numSamples);
         transportA.getNextAudioBlock(blockA);
         transportB.getNextAudioBlock(blockB);
+
+        // During a scratch gesture, render directly from the decoded track buffer.
+        // This supports forward and reverse motion without repeatedly seeking the file decoder.
+        renderScratchDeck(scratchA, 0, info.numSamples);
+        renderScratchDeck(scratchB, 1, info.numSamples);
 
         const float blend = static_cast<float>(crossfader.getValue());
         applyThreeBandEQ(scratchA, info.numSamples,
@@ -342,6 +358,12 @@ private:
     juce::AudioTransportSource transportA, transportB;
     std::unique_ptr<juce::AudioFormatReaderSource> readerA, readerB;
     juce::AudioBuffer<float> scratchA, scratchB;
+    std::shared_ptr<juce::AudioBuffer<float>> trackAudioA, trackAudioB;
+    std::atomic<bool> scratchingA{ false }, scratchingB{ false };
+    std::atomic<double> scratchPositionA{ 0.0 }, scratchPositionB{ 0.0 };
+    std::atomic<double> scratchSpeedA{ 0.0 }, scratchSpeedB{ 0.0 };
+    double outputSampleRate = 44100.0;
+    double sourceSampleRateA = 44100.0, sourceSampleRateB = 44100.0;
     static constexpr int jogFadeLength = 3840; // about 80 ms at 48 kHz
     std::atomic<double> jogPendingPositionA{ 0.0 }, jogPendingPositionB{ 0.0 };
     std::atomic<bool> jogSeekRequestedA{ false }, jogSeekRequestedB{ false };
@@ -373,6 +395,51 @@ private:
     float lowAlpha = 0.03f, midAlpha = 0.3f;
     float lowStateA[2] = { 0.0f, 0.0f }, midStateA[2] = { 0.0f, 0.0f };
     float lowStateB[2] = { 0.0f, 0.0f }, midStateB[2] = { 0.0f, 0.0f };
+
+    void renderScratchDeck(juce::AudioBuffer<float>& destination, int deckNumber, int numSamples)
+    {
+        const bool active = (deckNumber == 0 ? scratchingA.load() : scratchingB.load());
+        if (!active)
+            return;
+
+        auto audio = (deckNumber == 0 ? std::atomic_load(&trackAudioA)
+                                      : std::atomic_load(&trackAudioB));
+        if (!audio || audio->getNumSamples() < 2)
+            return;
+
+        const double sampleRate = deckNumber == 0 ? sourceSampleRateA : sourceSampleRateB;
+        double positionSeconds = deckNumber == 0 ? scratchPositionA.load() : scratchPositionB.load();
+        const double speed = deckNumber == 0 ? scratchSpeedA.load() : scratchSpeedB.load();
+        const int sourceChannels = audio->getNumChannels();
+        const int destinationChannels = destination.getNumChannels();
+        const int totalSamples = audio->getNumSamples();
+        const double increment = speed * sampleRate / juce::jmax(1.0, outputSampleRate);
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const double samplePosition = juce::jlimit(0.0, static_cast<double>(totalSamples - 2),
+                                                       positionSeconds * sampleRate);
+            const int index = static_cast<int>(samplePosition);
+            const float fraction = static_cast<float>(samplePosition - index);
+
+            for (int channel = 0; channel < destinationChannels; ++channel)
+            {
+                const int sourceChannel = juce::jmin(channel, sourceChannels - 1);
+                const float s0 = audio->getSample(sourceChannel, index);
+                const float s1 = audio->getSample(sourceChannel, index + 1);
+                destination.setSample(channel, i, s0 + (s1 - s0) * fraction);
+            }
+
+            positionSeconds += increment / sampleRate;
+            positionSeconds = juce::jlimit(0.0, static_cast<double>(totalSamples - 2) / sampleRate,
+                                           positionSeconds);
+        }
+
+        if (deckNumber == 0)
+            scratchPositionA.store(positionSeconds);
+        else
+            scratchPositionB.store(positionSeconds);
+    }
 
     void applyThreeBandEQ(juce::AudioBuffer<float>& buffer, int numSamples,
                           float lowGain, float midGain, float highGain,
@@ -445,22 +512,65 @@ private:
         cueA.onClick = [this] { cueDeck(0); };
         cueB.onClick = [this] { cueDeck(1); };
 
-        jogWheelA.onPositionChange = [this](double p)
+        jogWheelA.onScratchStart = [this]
         {
             const double length = transportA.getLengthInSeconds();
             if (length > 0.0)
             {
                 jogResumePlaybackA.store(transportA.isPlaying());
+                scratchPositionA.store(transportA.getCurrentPosition());
+                scratchSpeedA.store(0.0);
+                scratchingA.store(true);
+            }
+        };
+        jogWheelA.onScratchMove = [this](double p, double speed)
+        {
+            const double length = transportA.getLengthInSeconds();
+            if (length > 0.0)
+            {
+                scratchPositionA.store(p * length);
+                scratchSpeedA.store(juce::jlimit(-4.0, 4.0, speed * length));
+            }
+        };
+        jogWheelA.onScratchEnd = [this](double p)
+        {
+            const double length = transportA.getLengthInSeconds();
+            scratchingA.store(false);
+            scratchSpeedA.store(0.0);
+            if (length > 0.0)
+            {
                 jogPendingPositionA.store(p * length);
                 jogSeekRequestedA.store(true);
             }
         };
-        jogWheelB.onPositionChange = [this](double p)
+
+        jogWheelB.onScratchStart = [this]
         {
             const double length = transportB.getLengthInSeconds();
             if (length > 0.0)
             {
                 jogResumePlaybackB.store(transportB.isPlaying());
+                scratchPositionB.store(transportB.getCurrentPosition());
+                scratchSpeedB.store(0.0);
+                scratchingB.store(true);
+            }
+        };
+        jogWheelB.onScratchMove = [this](double p, double speed)
+        {
+            const double length = transportB.getLengthInSeconds();
+            if (length > 0.0)
+            {
+                scratchPositionB.store(p * length);
+                scratchSpeedB.store(juce::jlimit(-4.0, 4.0, speed * length));
+            }
+        };
+        jogWheelB.onScratchEnd = [this](double p)
+        {
+            const double length = transportB.getLengthInSeconds();
+            scratchingB.store(false);
+            scratchSpeedB.store(0.0);
+            if (length > 0.0)
+            {
                 jogPendingPositionB.store(p * length);
                 jogSeekRequestedB.store(true);
             }
@@ -671,12 +781,31 @@ private:
         }
 
         const double sourceSampleRate = reader->sampleRate;
+        if (reader->lengthInSamples < 2 ||
+            reader->lengthInSamples > static_cast<juce::int64>(std::numeric_limits<int>::max()))
+        {
+            status.setText("La pista es demasiado larga para el modo scratch en memoria.", juce::dontSendNotification);
+            return;
+        }
+
+        const int decodedSamples = static_cast<int>(reader->lengthInSamples);
+        auto decodedAudio = std::make_shared<juce::AudioBuffer<float>>(
+            static_cast<int>(reader->numChannels), decodedSamples);
+        if (!reader->read(decodedAudio.get(), 0, decodedSamples, 0, true, true))
+        {
+            status.setText("No se pudo preparar el audio para scratch.", juce::dontSendNotification);
+            return;
+        }
+
         std::unique_ptr<juce::AudioFormatReaderSource> newSource(
             new juce::AudioFormatReaderSource(reader.release(), true));
 
         if (deckNumber == 0)
         {
             transportA.stop();
+            std::atomic_store(&trackAudioA, decodedAudio);
+            sourceSampleRateA = sourceSampleRate;
+            scratchingA.store(false);
             transportA.setSource(nullptr);
             readerA.reset();
             readerA = std::move(newSource);
@@ -687,6 +816,9 @@ private:
         else
         {
             transportB.stop();
+            std::atomic_store(&trackAudioB, decodedAudio);
+            sourceSampleRateB = sourceSampleRate;
+            scratchingB.store(false);
             transportB.setSource(nullptr);
             readerB.reset();
             readerB = std::move(newSource);
