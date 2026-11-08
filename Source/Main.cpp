@@ -589,6 +589,8 @@ public:
                 const float sampleA = scratchA.getSample(channel, sample) * gainA * jogGainA;
                 const float sampleB = scratchB.getSample(channel, sample) * gainB * jogGainB;
                 info.buffer->setSample(channel, info.startSample + sample, sampleA + sampleB);
+                peakA = juce::jmax(peakA, std::abs(sampleA));
+                peakB = juce::jmax(peakB, std::abs(sampleB));
             }
 
             if (jogFadingOutA && jogFadeRemainingA > 0)
@@ -631,6 +633,8 @@ public:
                 }
             }
         }
+        meterLevelA.store(peakA);
+        meterLevelB.store(peakB);
     }
 
     void releaseResources() override
@@ -669,6 +673,8 @@ public:
         eqMidA.setBounds(170, 398, 100, 28);
         eqHighA.setBounds(295, 398, 130, 28);
         jogWheelA.setBounds(180, 432, 110, 110);
+        vuLabelA.setBounds(365, 430, 55, 18);
+        vuMeterA.setBounds(383, 450, 20, 82);
 
         loadB.setBounds(855, 155, 115, 42);
         playB.setBounds(980, 155, 95, 42);
@@ -684,6 +690,8 @@ public:
         eqMidB.setBounds(980, 398, 100, 28);
         eqHighB.setBounds(1105, 398, 130, 28);
         jogWheelB.setBounds(990, 432, 110, 110);
+        vuLabelB.setBounds(835, 430, 55, 18);
+        vuMeterB.setBounds(852, 450, 20, 82);
 
         mixerPanel.setBounds(470, 105, 340, 540);
 
@@ -1040,6 +1048,9 @@ private:
 
     void timerCallback() override
     {
+        vuMeterA.setLevel(meterLevelA.load());
+        vuMeterB.setLevel(meterLevelB.load());
+
         // Apply each seek only after the audio thread has faded that deck out.
         if (jogSeekReadyA.exchange(false))
         {
