@@ -638,14 +638,16 @@ public:
         eqLowB.setBounds(530, 267, 75, 88);
         eqMidB.setBounds(610, 267, 75, 88);
         eqHighB.setBounds(690, 267, 75, 88);
-        filterLabelA.setBounds(520, 365, 65, 18);
-        filterA.setBounds(520, 382, 65, 72);
-        channelLabelGainA.setBounds(585, 365, 65, 18);
-        channelFaderA.setBounds(585, 382, 65, 72);
-        filterLabelB.setBounds(655, 365, 65, 18);
-        filterB.setBounds(655, 382, 65, 72);
-        channelLabelGainB.setBounds(720, 365, 65, 18);
-        channelFaderB.setBounds(720, 382, 65, 72);
+        // Keep channel identifiers A and B stacked vertically beside their EQ rows.
+        // Put each channel LEVEL before its FILTER in the mixer control order.
+        channelLabelGainA.setBounds(520, 365, 65, 18);
+        channelFaderA.setBounds(520, 382, 65, 72);
+        filterLabelA.setBounds(585, 365, 65, 18);
+        filterA.setBounds(585, 382, 65, 72);
+        channelLabelGainB.setBounds(655, 365, 65, 18);
+        channelFaderB.setBounds(655, 382, 65, 72);
+        filterLabelB.setBounds(720, 365, 65, 18);
+        filterB.setBounds(720, 382, 65, 72);
         masterLabel.setBounds(610, 450, 80, 18);
         masterFader.setBounds(610, 465, 80, 65);
         mixerLabel.setBounds(485, 535, 310, 20);
