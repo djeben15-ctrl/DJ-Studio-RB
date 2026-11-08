@@ -134,7 +134,7 @@ public:
         addAndMakeVisible(status);
 
         setupDeckControls();
-        startTimerHz(10);
+        startTimerHz(60);
     }
 
     ~DJStudioRB() override
@@ -187,28 +187,95 @@ public:
         const float gainA = (1.0f - blend) * static_cast<float>(volumeA.getValue());
         const float gainB = blend * static_cast<float>(volumeB.getValue());
 
-        // Short fade-in after a jog seek masks waveform discontinuities (clicks).
-        const int requestA = jogFadeRequestA.exchange(0);
-        const int requestB = jogFadeRequestB.exchange(0);
-        if (requestA > 0) jogFadeRemainingA = requestA;
-        if (requestB > 0) jogFadeRemainingB = requestB;
+        // A jog seek is performed only after its deck fades to silence.
+        // The message-thread timer then changes the transport position and requests a fade-in.
+        if (jogResumeRequestA.exchange(false))
+        {
+            jogFadingOutA = false;
+            jogFadingInA = true;
+            jogFadeRemainingA = jogFadeLength;
+            jogGainA = 0.0f;
+        }
+        if (jogResumeRequestB.exchange(false))
+        {
+            jogFadingOutB = false;
+            jogFadingInB = true;
+            jogFadeRemainingB = jogFadeLength;
+            jogGainB = 0.0f;
+        }
 
+        if (jogSeekRequestedA.exchange(false))
+        {
+            if (jogGainA > 0.0001f && !jogFadingOutA)
+            {
+                jogFadingInA = false;
+                jogFadingOutA = true;
+                jogFadeRemainingA = jogFadeLength;
+            }
+            else if (jogGainA <= 0.0001f)
+                jogSeekReadyA.store(true);
+        }
+        if (jogSeekRequestedB.exchange(false))
+        {
+            if (jogGainB > 0.0001f && !jogFadingOutB)
+            {
+                jogFadingInB = false;
+                jogFadingOutB = true;
+                jogFadeRemainingB = jogFadeLength;
+            }
+            else if (jogGainB <= 0.0001f)
+                jogSeekReadyB.store(true);
+        }
+
+        const float fadeStep = 1.0f / static_cast<float>(jogFadeLength);
         for (int sample = 0; sample < info.numSamples; ++sample)
         {
-            const float fadeA = jogFadeRemainingA > 0
-                ? 1.0f - static_cast<float>(jogFadeRemainingA) / jogFadeLength : 1.0f;
-            const float fadeB = jogFadeRemainingB > 0
-                ? 1.0f - static_cast<float>(jogFadeRemainingB) / jogFadeLength : 1.0f;
-
             for (int channel = 0; channel < channels; ++channel)
             {
-                const float a = scratchA.getSample(channel, sample) * gainA * fadeA;
-                const float b = scratchB.getSample(channel, sample) * gainB * fadeB;
-                info.buffer->setSample(channel, info.startSample + sample, a + b);
+                const float sampleA = scratchA.getSample(channel, sample) * gainA * jogGainA;
+                const float sampleB = scratchB.getSample(channel, sample) * gainB * jogGainB;
+                info.buffer->setSample(channel, info.startSample + sample, sampleA + sampleB);
             }
 
-            if (jogFadeRemainingA > 0) --jogFadeRemainingA;
-            if (jogFadeRemainingB > 0) --jogFadeRemainingB;
+            if (jogFadingOutA && jogFadeRemainingA > 0)
+            {
+                jogGainA = juce::jmax(0.0f, jogGainA - fadeStep);
+                if (--jogFadeRemainingA <= 0 || jogGainA <= 0.0001f)
+                {
+                    jogGainA = 0.0f;
+                    jogFadingOutA = false;
+                    jogSeekReadyA.store(true);
+                }
+            }
+            else if (jogFadingInA && jogFadeRemainingA > 0)
+            {
+                jogGainA = juce::jmin(1.0f, jogGainA + fadeStep);
+                if (--jogFadeRemainingA <= 0 || jogGainA >= 0.9999f)
+                {
+                    jogGainA = 1.0f;
+                    jogFadingInA = false;
+                }
+            }
+
+            if (jogFadingOutB && jogFadeRemainingB > 0)
+            {
+                jogGainB = juce::jmax(0.0f, jogGainB - fadeStep);
+                if (--jogFadeRemainingB <= 0 || jogGainB <= 0.0001f)
+                {
+                    jogGainB = 0.0f;
+                    jogFadingOutB = false;
+                    jogSeekReadyB.store(true);
+                }
+            }
+            else if (jogFadingInB && jogFadeRemainingB > 0)
+            {
+                jogGainB = juce::jmin(1.0f, jogGainB + fadeStep);
+                if (--jogFadeRemainingB <= 0 || jogGainB >= 0.9999f)
+                {
+                    jogGainB = 1.0f;
+                    jogFadingInB = false;
+                }
+            }
         }
     }
 
@@ -271,9 +338,16 @@ private:
     juce::AudioTransportSource transportA, transportB;
     std::unique_ptr<juce::AudioFormatReaderSource> readerA, readerB;
     juce::AudioBuffer<float> scratchA, scratchB;
-    static constexpr int jogFadeLength = 480; // 10 ms at 48 kHz
-    std::atomic<int> jogFadeRequestA{ 0 }, jogFadeRequestB{ 0 };
+    static constexpr int jogFadeLength = 480; // about 10 ms at 48 kHz
+    std::atomic<double> jogPendingPositionA{ 0.0 }, jogPendingPositionB{ 0.0 };
+    std::atomic<bool> jogSeekRequestedA{ false }, jogSeekRequestedB{ false };
+    std::atomic<bool> jogSeekReadyA{ false }, jogSeekReadyB{ false };
+    std::atomic<bool> jogResumeRequestA{ false }, jogResumeRequestB{ false };
+    // These values are owned by the audio callback thread.
+    float jogGainA = 1.0f, jogGainB = 1.0f;
     int jogFadeRemainingA = 0, jogFadeRemainingB = 0;
+    bool jogFadingOutA = false, jogFadingOutB = false;
+    bool jogFadingInA = false, jogFadingInB = false;
     std::unique_ptr<juce::FileChooser> chooserA, chooserB;
 
     juce::Label title, mixerLabel, status;
@@ -371,8 +445,8 @@ private:
             const double length = transportA.getLengthInSeconds();
             if (length > 0.0)
             {
-                transportA.setPosition(p * length);
-                jogFadeRequestA.store(jogFadeLength);
+                jogPendingPositionA.store(p * length);
+                jogSeekRequestedA.store(true);
             }
         };
         jogWheelB.onPositionChange = [this](double p)
@@ -380,8 +454,8 @@ private:
             const double length = transportB.getLengthInSeconds();
             if (length > 0.0)
             {
-                transportB.setPosition(p * length);
-                jogFadeRequestB.store(jogFadeLength);
+                jogPendingPositionB.store(p * length);
+                jogSeekRequestedB.store(true);
             }
         };
         addAndMakeVisible(jogWheelA);
@@ -416,6 +490,18 @@ private:
 
     void timerCallback() override
     {
+        // Apply each seek only after the audio thread has faded that deck out.
+        if (jogSeekReadyA.exchange(false))
+        {
+            transportA.setPosition(jogPendingPositionA.load());
+            jogResumeRequestA.store(true);
+        }
+        if (jogSeekReadyB.exchange(false))
+        {
+            transportB.setPosition(jogPendingPositionB.load());
+            jogResumeRequestB.store(true);
+        }
+
         updateDeckDisplay(0);
         updateDeckDisplay(1);
     }
