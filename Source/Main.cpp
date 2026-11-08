@@ -305,8 +305,19 @@ public:
             slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);
             addAndMakeVisible(slider);
         };
-        setupMixerKnob(channelFaderA);
-        setupMixerKnob(channelFaderB);
+        auto setupVerticalFader = [this](juce::Slider& slider)
+        {
+            slider.setSliderStyle(juce::Slider::LinearVertical);
+            slider.setRange(0.0, 1.0, 0.01);
+            slider.setValue(1.0);
+            slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 42, 18);
+            slider.setColour(juce::Slider::trackColourId, juce::Colour(35, 210, 205));
+            slider.setColour(juce::Slider::thumbColourId, juce::Colours::white);
+            slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);
+            addAndMakeVisible(slider);
+        };
+        setupVerticalFader(channelFaderA);
+        setupVerticalFader(channelFaderB);
         setupMixerKnob(masterFader);
         setupMixerKnob(filterA);
         setupMixerKnob(filterB);
@@ -645,18 +656,20 @@ public:
         eqLabelHighB.setBounds(665, 318, 110, 18);
         eqHighB.setBounds(675, 334, 90, 66);
 
-        // LEVEL controls first, then FILTER controls.
-        channelLabelGainA.setBounds(485, 402, 70, 18);
-        channelFaderA.setBounds(485, 420, 70, 54);
-        channelLabelGainB.setBounds(555, 402, 70, 18);
-        channelFaderB.setBounds(555, 420, 70, 54);
-        filterLabelA.setBounds(645, 402, 70, 18);
-        filterA.setBounds(645, 420, 70, 54);
-        filterLabelB.setBounds(715, 402, 70, 18);
-        filterB.setBounds(715, 420, 70, 54);
+        // Vertical channel faders for Deck A and Deck B.
+        channelLabelGainA.setBounds(490, 402, 62, 18);
+        channelFaderA.setBounds(495, 420, 58, 112);
+        channelLabelGainB.setBounds(735, 402, 62, 18);
+        channelFaderB.setBounds(737, 420, 58, 112);
 
-        masterLabel.setBounds(610, 475, 80, 18);
-        masterFader.setBounds(610, 493, 80, 48);
+        // Filter knobs remain available beside the channel faders.
+        filterLabelA.setBounds(570, 420, 62, 18);
+        filterA.setBounds(565, 438, 72, 58);
+        filterLabelB.setBounds(650, 420, 62, 18);
+        filterB.setBounds(645, 438, 72, 58);
+
+        masterLabel.setBounds(610, 492, 80, 18);
+        masterFader.setBounds(610, 508, 80, 40);
         mixerLabel.setBounds(485, 540, 310, 18);
         crossfader.setBounds(490, 554, 300, 26);
         status.setBounds(100, 650, 1080, 25);
