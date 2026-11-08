@@ -137,6 +137,8 @@ public:
         eqLowA.setBounds(65, 398, 125, 28);
         eqMidA.setBounds(205, 398, 125, 28);
         eqHighA.setBounds(345, 398, 130, 28);
+        jogBackA.setBounds(150, 438, 100, 32);
+        jogForwardA.setBounds(270, 438, 100, 32);
 
         loadB.setBounds(615, 155, 120, 42);
         playB.setBounds(745, 155, 100, 42);
@@ -151,6 +153,8 @@ public:
         eqLowB.setBounds(615, 398, 125, 28);
         eqMidB.setBounds(755, 398, 125, 28);
         eqHighB.setBounds(895, 398, 130, 28);
+        jogBackB.setBounds(700, 438, 100, 32);
+        jogForwardB.setBounds(820, 438, 100, 32);
 
         mixerLabel.setBounds(350, 515, 400, 30);
         crossfader.setBounds(300, 550, 500, 45);
@@ -178,6 +182,10 @@ private:
     juce::TextButton cueB{"CUE / INICIO"};
     juce::Label timeA, timeB, volumeLabelA, volumeLabelB, eqTitleA, eqTitleB;
     juce::Slider eqLowA, eqMidA, eqHighA, eqLowB, eqMidB, eqHighB;
+    juce::TextButton jogBackA{"JOG -"};
+    juce::TextButton jogForwardA{"JOG +"};
+    juce::TextButton jogBackB{"JOG -"};
+    juce::TextButton jogForwardB{"JOG +"};
     float lowAlpha = 0.03f, midAlpha = 0.3f;
     float lowStateA[2] = { 0.0f, 0.0f }, midStateA[2] = { 0.0f, 0.0f };
     float lowStateB[2] = { 0.0f, 0.0f }, midStateB[2] = { 0.0f, 0.0f };
@@ -252,6 +260,18 @@ private:
 
         cueA.onClick = [this] { cueDeck(0); };
         cueB.onClick = [this] { cueDeck(1); };
+
+        jogBackA.onClick = [this] { nudgeDeck(0, -0.10); };
+        jogForwardA.onClick = [this] { nudgeDeck(0, 0.10); };
+        jogBackB.onClick = [this] { nudgeDeck(1, -0.10); };
+        jogForwardB.onClick = [this] { nudgeDeck(1, 0.10); };
+
+        for (auto* button : { &jogBackA, &jogForwardA, &jogBackB, &jogForwardB })
+        {
+            button->setColour(juce::TextButton::buttonColourId, juce::Colour(35, 75, 82));
+            button->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+            addAndMakeVisible(button);
+        }
         for (auto* button : { &cueA, &cueB })
         {
             button->setColour(juce::TextButton::buttonColourId, juce::Colour(45, 55, 70));
@@ -311,6 +331,26 @@ private:
             const auto& slider = (deckNumber == 0 ? seekA : seekB);
             transport.setPosition(slider.getValue() * length);
         }
+    }
+
+    void nudgeDeck(int deckNumber, double seconds)
+    {
+        auto& transport = (deckNumber == 0 ? transportA : transportB);
+        const double length = transport.getLengthInSeconds();
+        if (length <= 0.0)
+        {
+            status.setText(deckNumber == 0 ? "DECK A: carga una pista antes de usar JOG."
+                                           : "DECK B: carga una pista antes de usar JOG.",
+                           juce::dontSendNotification);
+            return;
+        }
+
+        const double nextPosition = juce::jlimit(0.0, length,
+                                                  transport.getCurrentPosition() + seconds);
+        transport.setPosition(nextPosition);
+        status.setText(deckNumber == 0 ? "DECK A: ajuste JOG de 0.10 segundos."
+                                       : "DECK B: ajuste JOG de 0.10 segundos.",
+                       juce::dontSendNotification);
     }
 
     void cueDeck(int deckNumber)
@@ -444,7 +484,7 @@ class DJStudioRBApplication : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "DJ Studio RB"; }
-    const juce::String getApplicationVersion() override { return "0.4.0"; }
+    const juce::String getApplicationVersion() override { return "0.5.0"; }
 
     void initialise(const juce::String&) override { window.reset(new MainWindow()); }
     void shutdown() override { window = nullptr; }
