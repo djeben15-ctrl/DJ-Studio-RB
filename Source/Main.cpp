@@ -624,34 +624,41 @@ public:
         jogWheelB.setBounds(990, 432, 110, 110);
 
         mixerPanel.setBounds(470, 105, 340, 455);
-        channelLabelA.setBounds(485, 140, 45, 22);
-        channelLabelB.setBounds(485, 245, 45, 22);
-        eqLabelLowA.setBounds(530, 140, 75, 22);
-        eqLabelMidA.setBounds(610, 140, 75, 22);
-        eqLabelHighA.setBounds(690, 140, 75, 22);
-        eqLowA.setBounds(530, 162, 75, 88);
-        eqMidA.setBounds(610, 162, 75, 88);
-        eqHighA.setBounds(690, 162, 75, 88);
-        eqLabelLowB.setBounds(530, 245, 75, 22);
-        eqLabelMidB.setBounds(610, 245, 75, 22);
-        eqLabelHighB.setBounds(690, 245, 75, 22);
-        eqLowB.setBounds(530, 267, 75, 88);
-        eqMidB.setBounds(610, 267, 75, 88);
-        eqHighB.setBounds(690, 267, 75, 88);
-        // Keep channel identifiers A and B stacked vertically beside their EQ rows.
-        // Put each channel LEVEL before its FILTER in the mixer control order.
-        channelLabelGainA.setBounds(520, 365, 65, 18);
-        channelFaderA.setBounds(520, 382, 65, 72);
-        filterLabelA.setBounds(585, 365, 65, 18);
-        filterA.setBounds(585, 382, 65, 72);
-        channelLabelGainB.setBounds(655, 365, 65, 18);
-        channelFaderB.setBounds(655, 382, 65, 72);
-        filterLabelB.setBounds(720, 365, 65, 18);
-        filterB.setBounds(720, 382, 65, 72);
-        masterLabel.setBounds(610, 450, 80, 18);
-        masterFader.setBounds(610, 465, 80, 65);
-        mixerLabel.setBounds(485, 535, 310, 20);
-        crossfader.setBounds(490, 552, 300, 30);
+
+        // EQ arranged vertically: LOW, MID, HIGH stacked for each deck.
+        channelLabelA.setBounds(500, 135, 120, 22);
+        channelLabelB.setBounds(655, 135, 120, 22);
+
+        // Deck A equalizer column
+        eqLabelLowA.setBounds(500, 158, 120, 18);
+        eqLowA.setBounds(530, 176, 60, 52);
+        eqLabelMidA.setBounds(500, 230, 120, 18);
+        eqMidA.setBounds(530, 248, 60, 52);
+        eqLabelHighA.setBounds(500, 302, 120, 18);
+        eqHighA.setBounds(530, 320, 60, 52);
+
+        // Deck B equalizer column
+        eqLabelLowB.setBounds(655, 158, 120, 18);
+        eqLowB.setBounds(685, 176, 60, 52);
+        eqLabelMidB.setBounds(655, 230, 120, 18);
+        eqMidB.setBounds(685, 248, 60, 52);
+        eqLabelHighB.setBounds(655, 302, 120, 18);
+        eqHighB.setBounds(685, 320, 60, 52);
+
+        // Put both LEVEL controls first, followed by both FILTER controls.
+        channelLabelGainA.setBounds(485, 378, 70, 18);
+        channelFaderA.setBounds(485, 396, 70, 54);
+        channelLabelGainB.setBounds(555, 378, 70, 18);
+        channelFaderB.setBounds(555, 396, 70, 54);
+        filterLabelA.setBounds(645, 378, 70, 18);
+        filterA.setBounds(645, 396, 70, 54);
+        filterLabelB.setBounds(715, 378, 70, 18);
+        filterB.setBounds(715, 396, 70, 54);
+
+        masterLabel.setBounds(610, 452, 80, 18);
+        masterFader.setBounds(610, 470, 80, 55);
+        mixerLabel.setBounds(485, 530, 310, 20);
+        crossfader.setBounds(490, 548, 300, 30);
         status.setBounds(100, 650, 1080, 25);
     }
 
