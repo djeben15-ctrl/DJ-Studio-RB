@@ -1,0 +1,48 @@
+name: Build DJ Studio RB for macOS High Sierra
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'CMakeLists.txt'
+      - 'Source/**'
+      - '.github/workflows/build-macos.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Intel app for macOS 10.13+
+    runs-on: macos-15-intel
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
+
+      - name: Build application
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Package DMG
+        run: |
+          APP_PATH="build/DJStudioRB_artefacts/Release/DJ Studio RB.app"
+          test -d "$APP_PATH"
+          mkdir -p dist
+          hdiutil create -volname "DJ Studio RB" \
+            -srcfolder "$APP_PATH" \
+            -ov -format UDZO "dist/DJ-Studio-RB-macOS-Intel.dmg"
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: DJ-Studio-RB-macOS-High-Sierra
+          path: dist/DJ-Studio-RB-macOS-Intel.dmg
+          if-no-files-found: error
+          retention-days: 14
