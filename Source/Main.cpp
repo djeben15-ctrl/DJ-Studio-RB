@@ -264,6 +264,45 @@ private:
     }
 };
 
+class VUMeter : public juce::Component
+{
+public:
+    void setLevel(float newLevel)
+    {
+        const float target = juce::jlimit(0.0f, 1.0f, newLevel);
+        level = target > level ? target : juce::jmax(target, level * 0.88f);
+        repaint();
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        auto bounds = getLocalBounds().toFloat().reduced(2.0f);
+        g.setColour(juce::Colour(8, 12, 18));
+        g.fillRoundedRectangle(bounds, 4.0f);
+        constexpr int segments = 16;
+        constexpr float gap = 2.0f;
+        const float segmentHeight = (bounds.getHeight() - gap * (segments - 1)) / segments;
+        const int lit = juce::roundToInt(level * segments);
+        for (int i = 0; i < segments; ++i)
+        {
+            const int fromBottom = segments - 1 - i;
+            juce::Colour colour = fromBottom >= 13 ? juce::Colour(235, 75, 65)
+                                  : fromBottom >= 10 ? juce::Colour(235, 190, 65)
+                                  : juce::Colour(35, 210, 145);
+            if (fromBottom < lit)
+                g.setColour(colour);
+            else
+                g.setColour(juce::Colour(48, 58, 67));
+            const float y = bounds.getY() + i * (segmentHeight + gap);
+            g.fillRoundedRectangle(bounds.getX() + 2.0f, y,
+                                   bounds.getWidth() - 4.0f, segmentHeight, 2.0f);
+        }
+    }
+
+private:
+    float level = 0.0f;
+};
+
 class DJStudioRB : public juce::AudioAppComponent, private juce::Timer, public juce::FileDragAndDropTarget
 {
 public:
@@ -318,7 +357,7 @@ public:
         };
         setupMixerKnob(channelFaderA);
         setupMixerKnob(channelFaderB);
-        setupMixerKnob(masterFader);
+        setupMixerKnob(masterFader);\n        masterFader.setValue(0.85);
         setupMixerKnob(filterA);
         setupMixerKnob(filterB);
         filterA.setRange(-1.0, 1.0, 0.01);
@@ -339,7 +378,7 @@ public:
         addAndMakeVisible(mixerLabel);
         channelLabelA.setText("A", juce::dontSendNotification);
         channelLabelB.setText("B", juce::dontSendNotification);
-        masterLabel.setText("MASTER", juce::dontSendNotification);
+        masterLabel.setText("MASTER", juce::dontSendNotification);\n        vuLabelA.setText("VU A", juce::dontSendNotification);\n        vuLabelB.setText("VU B", juce::dontSendNotification);\n        for (auto* label : { &vuLabelA, &vuLabelB })\n        {\n            label->setJustificationType(juce::Justification::centred);\n            label->setColour(juce::Label::textColourId, juce::Colour(190, 200, 215));\n            addAndMakeVisible(label);\n        }\n        addAndMakeVisible(vuMeterA);\n        addAndMakeVisible(vuMeterB);
         for (auto* label : { &channelLabelA, &channelLabelB, &masterLabel })
         {
             label->setJustificationType(juce::Justification::centred);
@@ -530,7 +569,7 @@ public:
                 jogSeekReadyB.store(true);
         }
 
-        const float fadeStep = 1.0f / static_cast<float>(jogFadeLength);
+        float peakA = 0.0f, peakB = 0.0f;\n        const float fadeStep = 1.0f / static_cast<float>(jogFadeLength);
         for (int sample = 0; sample < info.numSamples; ++sample)
         {
             for (int channel = 0; channel < channels; ++channel)
@@ -634,7 +673,7 @@ public:
         eqHighB.setBounds(1105, 398, 130, 28);
         jogWheelB.setBounds(990, 432, 110, 110);
 
-        mixerPanel.setBounds(470, 105, 340, 520);
+        mixerPanel.setBounds(470, 105, 340, 540);
 
         // LEVEL A/B rotary controls stay at the top of their channel strips.
         channelLabelA.setBounds(510, 132, 110, 18);
@@ -702,7 +741,7 @@ private:
     bool jogFadingInA = false, jogFadingInB = false;
     std::unique_ptr<juce::FileChooser> chooserA, chooserB;
 
-    juce::Label title, mixerLabel, status, channelLabelA, channelLabelB, masterLabel;
+    juce::Label title, mixerLabel, status, channelLabelA, channelLabelB, masterLabel, vuLabelA, vuLabelB;\n    VUMeter vuMeterA, vuMeterB;\n    std::atomic<float> meterLevelA{ 0.0f }, meterLevelB{ 0.0f };
     juce::Label eqLabelLowA, eqLabelMidA, eqLabelHighA, eqLabelLowB, eqLabelMidB, eqLabelHighB;
     juce::Label filterLabelA, filterLabelB, channelLabelGainA, channelLabelGainB;
     juce::GroupComponent mixerPanel;
