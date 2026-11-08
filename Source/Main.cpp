@@ -1,6 +1,6 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
-class DJStudioRB : public juce::AudioAppComponent
+class DJStudioRB : public juce::AudioAppComponent, private juce::Timer
 {
 public:
     DJStudioRB()
@@ -39,6 +39,9 @@ public:
         status.setJustificationType(juce::Justification::centred);
         status.setColour(juce::Label::textColourId, juce::Colour(180, 190, 205));
         addAndMakeVisible(status);
+
+        setupDeckControls();
+        startTimerHz(10);
     }
 
     ~DJStudioRB() override
@@ -77,8 +80,8 @@ public:
         transportB.getNextAudioBlock(blockB);
 
         const float blend = static_cast<float>(crossfader.getValue());
-        const float gainA = 1.0f - blend;
-        const float gainB = blend;
+        const float gainA = (1.0f - blend) * static_cast<float>(volumeA.getValue());
+        const float gainB = blend * static_cast<float>(volumeB.getValue());
 
         for (int channel = 0; channel < channels; ++channel)
         {
@@ -112,12 +115,22 @@ public:
         loadA.setBounds(65, 155, 120, 42);
         playA.setBounds(195, 155, 100, 42);
         stopA.setBounds(305, 155, 100, 42);
-        trackA.setBounds(65, 220, 410, 90);
+        trackA.setBounds(65, 210, 410, 48);
+        timeA.setBounds(65, 265, 410, 24);
+        seekA.setBounds(65, 290, 410, 24);
+        cueA.setBounds(65, 330, 90, 34);
+        volumeLabelA.setBounds(170, 330, 90, 34);
+        volumeA.setBounds(260, 330, 215, 34);
 
         loadB.setBounds(615, 155, 120, 42);
         playB.setBounds(745, 155, 100, 42);
         stopB.setBounds(855, 155, 100, 42);
-        trackB.setBounds(615, 220, 410, 90);
+        trackB.setBounds(615, 210, 410, 48);
+        timeB.setBounds(615, 265, 410, 24);
+        seekB.setBounds(615, 290, 410, 24);
+        cueB.setBounds(615, 330, 90, 34);
+        volumeLabelB.setBounds(720, 330, 90, 34);
+        volumeB.setBounds(810, 330, 215, 34);
 
         mixerLabel.setBounds(350, 515, 400, 30);
         crossfader.setBounds(300, 550, 500, 45);
@@ -140,7 +153,105 @@ private:
     juce::TextButton playB{"PLAY"};
     juce::TextButton stopB{"STOP"};
     juce::Label trackA, trackB;
-    juce::Slider crossfader;
+    juce::Slider crossfader, seekA, seekB, volumeA, volumeB;
+    juce::TextButton cueA{"CUE / INICIO"};
+    juce::TextButton cueB{"CUE / INICIO"};
+    juce::Label timeA, timeB, volumeLabelA, volumeLabelB;
+
+    void setupDeckControls()
+    {
+        auto setupSeek = [this](juce::Slider& slider)
+        {
+            slider.setRange(0.0, 1.0, 0.001);
+            slider.setValue(0.0);
+            slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+            slider.setColour(juce::Slider::trackColourId, juce::Colour(35, 210, 205));
+            addAndMakeVisible(slider);
+        };
+        setupSeek(seekA);
+        setupSeek(seekB);
+
+        auto setupVolume = [this](juce::Slider& slider)
+        {
+            slider.setRange(0.0, 1.0, 0.01);
+            slider.setValue(1.0);
+            slider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 48, 24);
+            addAndMakeVisible(slider);
+        };
+        setupVolume(volumeA);
+        setupVolume(volumeB);
+
+        cueA.onClick = [this] { cueDeck(0); };
+        cueB.onClick = [this] { cueDeck(1); };
+        for (auto* button : { &cueA, &cueB })
+        {
+            button->setColour(juce::TextButton::buttonColourId, juce::Colour(45, 55, 70));
+            button->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+            addAndMakeVisible(button);
+        }
+
+        timeA.setJustificationType(juce::Justification::centredLeft);
+        timeB.setJustificationType(juce::Justification::centredLeft);
+        volumeLabelA.setText("VOLUME", juce::dontSendNotification);
+        volumeLabelB.setText("VOLUME", juce::dontSendNotification);
+        for (auto* label : { &timeA, &timeB, &volumeLabelA, &volumeLabelB })
+        {
+            label->setColour(juce::Label::textColourId, juce::Colour(190, 200, 215));
+            addAndMakeVisible(label);
+        }
+
+        seekA.onValueChange = [this] { seekDeckFromSlider(0); };
+        seekB.onValueChange = [this] { seekDeckFromSlider(1); };
+    }
+
+    static juce::String formatTime(double seconds)
+    {
+        const int total = juce::jmax(0, (int) seconds);
+        return juce::String(total / 60).paddedLeft('0', 2) + ":" +
+               juce::String(total % 60).paddedLeft('0', 2);
+    }
+
+    void timerCallback() override
+    {
+        updateDeckDisplay(0);
+        updateDeckDisplay(1);
+    }
+
+    void updateDeckDisplay(int deckNumber)
+    {
+        auto& transport = (deckNumber == 0 ? transportA : transportB);
+        auto& slider = (deckNumber == 0 ? seekA : seekB);
+        auto& label = (deckNumber == 0 ? timeA : timeB);
+        const double length = transport.getLengthInSeconds();
+        const double position = transport.getCurrentPosition();
+
+        if (!slider.isMouseButtonDown())
+            slider.setValue(length > 0.0 ? position / length : 0.0,
+                            juce::dontSendNotification);
+
+        label.setText(formatTime(position) + " / " + formatTime(length),
+                      juce::dontSendNotification);
+    }
+
+    void seekDeckFromSlider(int deckNumber)
+    {
+        auto& transport = (deckNumber == 0 ? transportA : transportB);
+        const double length = transport.getLengthInSeconds();
+        if (length > 0.0)
+            transport.setPosition(seekA.getValue() * length);
+    }
+
+    void cueDeck(int deckNumber)
+    {
+        auto& transport = (deckNumber == 0 ? transportA : transportB);
+        transport.stop();
+        transport.setPosition(0.0);
+        auto& playButton = (deckNumber == 0 ? playA : playB);
+        playButton.setButtonText("PLAY");
+        status.setText(deckNumber == 0 ? "DECK A: posición inicial." :
+                                         "DECK B: posición inicial.",
+                       juce::dontSendNotification);
+    }
 
     void setupDeck(juce::GroupComponent& deck, const juce::String& name,
                    juce::TextButton& load, juce::TextButton& play,
@@ -261,7 +372,7 @@ class DJStudioRBApplication : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "DJ Studio RB"; }
-    const juce::String getApplicationVersion() override { return "0.2.0"; }
+    const juce::String getApplicationVersion() override { return "0.3.0"; }
 
     void initialise(const juce::String&) override { window.reset(new MainWindow()); }
     void shutdown() override { window = nullptr; }
