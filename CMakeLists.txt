@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(DJStudioRB VERSION 0.1.0 LANGUAGES CXX)
+project(DJStudioRB VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,6 +22,7 @@ FetchContent_MakeAvailable(JUCE)
 juce_add_gui_app(DJStudioRB
     PRODUCT_NAME "DJ Studio RB"
     COMPANY_NAME "DJ Studio RB"
+    BUNDLE_ID "com.djstudiorb.app"
 )
 
 target_sources(DJStudioRB
