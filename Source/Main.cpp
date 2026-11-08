@@ -1,5 +1,6 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <cmath>
+#include <atomic>
 
 class VirtualJogWheel : public juce::Component
 {
@@ -186,13 +187,28 @@ public:
         const float gainA = (1.0f - blend) * static_cast<float>(volumeA.getValue());
         const float gainB = blend * static_cast<float>(volumeB.getValue());
 
-        for (int channel = 0; channel < channels; ++channel)
+        // Short fade-in after a jog seek masks waveform discontinuities (clicks).
+        const int requestA = jogFadeRequestA.exchange(0);
+        const int requestB = jogFadeRequestB.exchange(0);
+        if (requestA > 0) jogFadeRemainingA = requestA;
+        if (requestB > 0) jogFadeRemainingB = requestB;
+
+        for (int sample = 0; sample < info.numSamples; ++sample)
         {
-            info.buffer->clear(channel, info.startSample, info.numSamples);
-            info.buffer->addFrom(channel, info.startSample, scratchA, channel, 0,
-                                 info.numSamples, gainA);
-            info.buffer->addFrom(channel, info.startSample, scratchB, channel, 0,
-                                 info.numSamples, gainB);
+            const float fadeA = jogFadeRemainingA > 0
+                ? 1.0f - static_cast<float>(jogFadeRemainingA) / jogFadeLength : 1.0f;
+            const float fadeB = jogFadeRemainingB > 0
+                ? 1.0f - static_cast<float>(jogFadeRemainingB) / jogFadeLength : 1.0f;
+
+            for (int channel = 0; channel < channels; ++channel)
+            {
+                const float a = scratchA.getSample(channel, sample) * gainA * fadeA;
+                const float b = scratchB.getSample(channel, sample) * gainB * fadeB;
+                info.buffer->setSample(channel, info.startSample + sample, a + b);
+            }
+
+            if (jogFadeRemainingA > 0) --jogFadeRemainingA;
+            if (jogFadeRemainingB > 0) --jogFadeRemainingB;
         }
     }
 
@@ -255,6 +271,9 @@ private:
     juce::AudioTransportSource transportA, transportB;
     std::unique_ptr<juce::AudioFormatReaderSource> readerA, readerB;
     juce::AudioBuffer<float> scratchA, scratchB;
+    static constexpr int jogFadeLength = 480; // 10 ms at 48 kHz
+    std::atomic<int> jogFadeRequestA{ 0 }, jogFadeRequestB{ 0 };
+    int jogFadeRemainingA = 0, jogFadeRemainingB = 0;
     std::unique_ptr<juce::FileChooser> chooserA, chooserB;
 
     juce::Label title, mixerLabel, status;
@@ -350,12 +369,20 @@ private:
         jogWheelA.onPositionChange = [this](double p)
         {
             const double length = transportA.getLengthInSeconds();
-            if (length > 0.0) transportA.setPosition(p * length);
+            if (length > 0.0)
+            {
+                transportA.setPosition(p * length);
+                jogFadeRequestA.store(jogFadeLength);
+            }
         };
         jogWheelB.onPositionChange = [this](double p)
         {
             const double length = transportB.getLengthInSeconds();
-            if (length > 0.0) transportB.setPosition(p * length);
+            if (length > 0.0)
+            {
+                transportB.setPosition(p * length);
+                jogFadeRequestB.store(jogFadeLength);
+            }
         };
         addAndMakeVisible(jogWheelA);
         addAndMakeVisible(jogWheelB);
