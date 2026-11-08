@@ -107,7 +107,7 @@ private:
     }
 };
 
-class DJStudioRB : public juce::AudioAppComponent, private juce::Timer
+class DJStudioRB : public juce::AudioAppComponent, private juce::Timer, public juce::FileDragAndDropTarget
 {
 public:
     DJStudioRB()
@@ -156,6 +156,61 @@ public:
         shutdownAudio();
         transportA.setSource(nullptr);
         transportB.setSource(nullptr);
+    }
+
+    // Accept audio files dragged from Finder/Explorer directly onto either deck.
+    bool isInterestedInFileDrag(const juce::StringArray& files) override
+    {
+        for (const auto& path : files)
+        {
+            const juce::String extension = juce::File(path).getFileExtension().toLowerCase();
+            if (extension == ".mp3" || extension == ".wav" || extension == ".aif" ||
+                extension == ".aiff" || extension == ".flac" || extension == ".ogg")
+                return true;
+        }
+        return false;
+    }
+
+    void fileDragEnter(const juce::StringArray&, int, int) override
+    {
+        status.setText("Suelta la canción dentro de DECK A o DECK B.",
+                       juce::dontSendNotification);
+    }
+
+    void fileDragExit(const juce::StringArray&) override
+    {
+        status.setText("Listo. Arrastra una canción a uno de los decks.",
+                       juce::dontSendNotification);
+    }
+
+    void filesDropped(const juce::StringArray& files, int x, int y) override
+    {
+        if (files.isEmpty())
+            return;
+
+        const juce::Point<int> dropPosition(x, y);
+        const int deckNumber = deckA.getBounds().contains(dropPosition) ? 0
+                            : deckB.getBounds().contains(dropPosition) ? 1 : -1;
+
+        if (deckNumber < 0)
+        {
+            status.setText("Suelta el archivo dentro del recuadro DECK A o DECK B.",
+                           juce::dontSendNotification);
+            return;
+        }
+
+        const juce::File audioFile(files[0]);
+        if (!audioFile.existsAsFile())
+        {
+            status.setText("No se encontró el archivo de audio.",
+                           juce::dontSendNotification);
+            return;
+        }
+
+        loadTrackFromFile(deckNumber, audioFile);
+        if (files.size() > 1)
+            status.setText("Se cargó la primera canción. Arrastra otra al otro deck.",
+                           juce::dontSendNotification);
     }
 
     void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override
