@@ -1,4 +1,5 @@
 #include <juce_audio_utils/juce_audio_utils.h>
+#include <cmath>
 
 class DJStudioRB : public juce::AudioAppComponent, private juce::Timer
 {
@@ -55,6 +56,8 @@ public:
     {
         transportA.prepareToPlay(samplesPerBlockExpected, sampleRate);
         transportB.prepareToPlay(samplesPerBlockExpected, sampleRate);
+        lowAlpha = 1.0f - std::exp(-2.0f * juce::MathConstants<float>::pi * 250.0f / static_cast<float>(sampleRate));
+        midAlpha = 1.0f - std::exp(-2.0f * juce::MathConstants<float>::pi * 4000.0f / static_cast<float>(sampleRate));
         scratchA.setSize(2, samplesPerBlockExpected);
         scratchB.setSize(2, samplesPerBlockExpected);
     }
@@ -80,6 +83,15 @@ public:
         transportB.getNextAudioBlock(blockB);
 
         const float blend = static_cast<float>(crossfader.getValue());
+        applyThreeBandEQ(scratchA, info.numSamples,
+                         static_cast<float>(eqLowA.getValue()),
+                         static_cast<float>(eqMidA.getValue()),
+                         static_cast<float>(eqHighA.getValue()), lowStateA, midStateA);
+        applyThreeBandEQ(scratchB, info.numSamples,
+                         static_cast<float>(eqLowB.getValue()),
+                         static_cast<float>(eqMidB.getValue()),
+                         static_cast<float>(eqHighB.getValue()), lowStateB, midStateB);
+
         const float gainA = (1.0f - blend) * static_cast<float>(volumeA.getValue());
         const float gainB = blend * static_cast<float>(volumeB.getValue());
 
@@ -121,6 +133,10 @@ public:
         cueA.setBounds(65, 330, 90, 34);
         volumeLabelA.setBounds(170, 330, 90, 34);
         volumeA.setBounds(260, 330, 215, 34);
+        eqTitleA.setBounds(65, 372, 410, 20);
+        eqLowA.setBounds(65, 398, 125, 28);
+        eqMidA.setBounds(205, 398, 125, 28);
+        eqHighA.setBounds(345, 398, 130, 28);
 
         loadB.setBounds(615, 155, 120, 42);
         playB.setBounds(745, 155, 100, 42);
@@ -131,6 +147,10 @@ public:
         cueB.setBounds(615, 330, 90, 34);
         volumeLabelB.setBounds(720, 330, 90, 34);
         volumeB.setBounds(810, 330, 215, 34);
+        eqTitleB.setBounds(615, 372, 410, 20);
+        eqLowB.setBounds(615, 398, 125, 28);
+        eqMidB.setBounds(755, 398, 125, 28);
+        eqHighB.setBounds(895, 398, 130, 28);
 
         mixerLabel.setBounds(350, 515, 400, 30);
         crossfader.setBounds(300, 550, 500, 45);
@@ -156,7 +176,37 @@ private:
     juce::Slider crossfader, seekA, seekB, volumeA, volumeB;
     juce::TextButton cueA{"CUE / INICIO"};
     juce::TextButton cueB{"CUE / INICIO"};
-    juce::Label timeA, timeB, volumeLabelA, volumeLabelB;
+    juce::Label timeA, timeB, volumeLabelA, volumeLabelB, eqTitleA, eqTitleB;
+    juce::Slider eqLowA, eqMidA, eqHighA, eqLowB, eqMidB, eqHighB;
+    float lowAlpha = 0.03f, midAlpha = 0.3f;
+    float lowStateA[2] = { 0.0f, 0.0f }, midStateA[2] = { 0.0f, 0.0f };
+    float lowStateB[2] = { 0.0f, 0.0f }, midStateB[2] = { 0.0f, 0.0f };
+
+    void applyThreeBandEQ(juce::AudioBuffer<float>& buffer, int numSamples,
+                          float lowGain, float midGain, float highGain,
+                          float* lowState, float* midState)
+    {
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        {
+            float* samples = buffer.getWritePointer(channel);
+            float low = lowState[channel];
+            float midLowPass = midState[channel];
+
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const float input = samples[i];
+                low += lowAlpha * (input - low);
+                midLowPass += midAlpha * (input - midLowPass);
+                const float lowBand = low;
+                const float midBand = midLowPass - low;
+                const float highBand = input - midLowPass;
+                samples[i] = lowBand * lowGain + midBand * midGain + highBand * highGain;
+            }
+
+            lowState[channel] = low;
+            midState[channel] = midLowPass;
+        }
+    }
 
     void setupDeckControls()
     {
@@ -180,6 +230,25 @@ private:
         };
         setupVolume(volumeA);
         setupVolume(volumeB);
+
+        auto setupEq = [this](juce::Slider& slider, juce::Label& label, const juce::String& text)
+        {
+            label.setText(text, juce::dontSendNotification);
+            label.setJustificationType(juce::Justification::centred);
+            label.setColour(juce::Label::textColourId, juce::Colour(190, 200, 215));
+            addAndMakeVisible(label);
+            slider.setRange(0.0, 2.0, 0.01);
+            slider.setValue(1.0);
+            slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+            slider.setColour(juce::Slider::trackColourId, juce::Colour(35, 210, 205));
+            addAndMakeVisible(slider);
+        };
+        setupEq(eqLowA, eqTitleA, "ECUALIZADOR  LOW / MID / HIGH");
+        setupEq(eqMidA, eqTitleA, "ECUALIZADOR  LOW / MID / HIGH");
+        setupEq(eqHighA, eqTitleA, "ECUALIZADOR  LOW / MID / HIGH");
+        setupEq(eqLowB, eqTitleB, "ECUALIZADOR  LOW / MID / HIGH");
+        setupEq(eqMidB, eqTitleB, "ECUALIZADOR  LOW / MID / HIGH");
+        setupEq(eqHighB, eqTitleB, "ECUALIZADOR  LOW / MID / HIGH");
 
         cueA.onClick = [this] { cueDeck(0); };
         cueB.onClick = [this] { cueDeck(1); };
@@ -238,7 +307,10 @@ private:
         auto& transport = (deckNumber == 0 ? transportA : transportB);
         const double length = transport.getLengthInSeconds();
         if (length > 0.0)
-            transport.setPosition(seekA.getValue() * length);
+        {
+            const auto& slider = (deckNumber == 0 ? seekA : seekB);
+            transport.setPosition(slider.getValue() * length);
+        }
     }
 
     void cueDeck(int deckNumber)
@@ -372,7 +444,7 @@ class DJStudioRBApplication : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "DJ Studio RB"; }
-    const juce::String getApplicationVersion() override { return "0.3.0"; }
+    const juce::String getApplicationVersion() override { return "0.4.0"; }
 
     void initialise(const juce::String&) override { window.reset(new MainWindow()); }
     void shutdown() override { window = nullptr; }
