@@ -316,8 +316,8 @@ public:
             slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);
             addAndMakeVisible(slider);
         };
-        setupVerticalFader(channelFaderA);
-        setupVerticalFader(channelFaderB);
+        setupMixerKnob(channelFaderA);
+        setupMixerKnob(channelFaderB);
         setupMixerKnob(masterFader);
         setupMixerKnob(filterA);
         setupMixerKnob(filterB);
@@ -636,40 +636,42 @@ public:
 
         mixerPanel.setBounds(470, 105, 340, 455);
 
-        // Larger, easy-to-grab rotary EQ knobs in two vertical deck columns.
-        channelLabelA.setBounds(510, 132, 110, 22);
-        channelLabelB.setBounds(665, 132, 110, 22);
+        // LEVEL A/B are rotary gain knobs placed above each deck's LOW control.
+        channelLabelA.setBounds(510, 132, 110, 18);
+        channelLabelB.setBounds(665, 132, 110, 18);
+        channelLabelGainA.setBounds(510, 151, 110, 18);
+        channelFaderA.setBounds(520, 168, 90, 58);
+        channelLabelGainB.setBounds(665, 151, 110, 18);
+        channelFaderB.setBounds(675, 168, 90, 58);
 
-        // Deck A: larger LOW / MID / HIGH knobs
-        eqLabelLowA.setBounds(510, 154, 110, 18);
-        eqLowA.setBounds(520, 170, 90, 66);
-        eqLabelMidA.setBounds(510, 236, 110, 18);
-        eqMidA.setBounds(520, 252, 90, 66);
-        eqLabelHighA.setBounds(510, 318, 110, 18);
-        eqHighA.setBounds(520, 334, 90, 66);
+        // EQ knobs remain vertically arranged under the LEVEL knobs.
+        eqLabelLowA.setBounds(510, 226, 110, 18);
+        eqLowA.setBounds(520, 242, 90, 58);
+        eqLabelMidA.setBounds(510, 300, 110, 18);
+        eqMidA.setBounds(520, 316, 90, 58);
+        eqLabelHighA.setBounds(510, 374, 110, 18);
+        eqHighA.setBounds(520, 390, 90, 58);
 
-        // Deck B: larger LOW / MID / HIGH knobs
-        eqLabelLowB.setBounds(665, 154, 110, 18);
-        eqLowB.setBounds(675, 170, 90, 66);
-        eqLabelMidB.setBounds(665, 236, 110, 18);
-        eqMidB.setBounds(675, 252, 90, 66);
-        eqLabelHighB.setBounds(665, 318, 110, 18);
-        eqHighB.setBounds(675, 334, 90, 66);
+        eqLabelLowB.setBounds(665, 226, 110, 18);
+        eqLowB.setBounds(675, 242, 90, 58);
+        eqLabelMidB.setBounds(665, 300, 110, 18);
+        eqMidB.setBounds(675, 316, 90, 58);
+        eqLabelHighB.setBounds(665, 374, 110, 18);
+        eqHighB.setBounds(675, 390, 90, 58);
 
-        // Vertical channel faders for Deck A and Deck B.
-        channelLabelGainA.setBounds(490, 402, 62, 18);
-        channelFaderA.setBounds(495, 420, 58, 112);
-        channelLabelGainB.setBounds(735, 402, 62, 18);
-        channelFaderB.setBounds(737, 420, 58, 112);
+        // Dedicated vertical volume faders, with numeric readouts, at the former LEVEL area.
+        volumeLabelA.setBounds(480, 448, 62, 18);
+        volumeA.setBounds(485, 466, 58, 86);
+        volumeLabelB.setBounds(748, 448, 62, 18);
+        volumeB.setBounds(750, 466, 58, 86);
 
-        // Filter knobs remain available beside the channel faders.
-        filterLabelA.setBounds(570, 420, 62, 18);
-        filterA.setBounds(565, 438, 72, 58);
-        filterLabelB.setBounds(650, 420, 62, 18);
-        filterB.setBounds(645, 438, 72, 58);
+        filterLabelA.setBounds(560, 448, 72, 18);
+        filterA.setBounds(560, 466, 72, 58);
+        filterLabelB.setBounds(650, 448, 72, 18);
+        filterB.setBounds(650, 466, 72, 58);
 
-        masterLabel.setBounds(610, 492, 80, 18);
-        masterFader.setBounds(610, 508, 80, 40);
+        masterLabel.setBounds(610, 486, 80, 18);
+        masterFader.setBounds(610, 502, 80, 48);
         mixerLabel.setBounds(485, 540, 310, 18);
         crossfader.setBounds(490, 554, 300, 26);
         status.setBounds(100, 650, 1080, 25);
@@ -836,9 +838,13 @@ private:
 
         auto setupVolume = [this](juce::Slider& slider)
         {
+            slider.setSliderStyle(juce::Slider::LinearVertical);
             slider.setRange(0.0, 1.0, 0.01);
             slider.setValue(1.0);
-            slider.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 48, 24);
+            slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 46, 18);
+            slider.setColour(juce::Slider::trackColourId, juce::Colour(35, 210, 205));
+            slider.setColour(juce::Slider::thumbColourId, juce::Colours::white);
+            slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);
             addAndMakeVisible(slider);
         };
         setupVolume(volumeA);
@@ -877,6 +883,7 @@ private:
         setupEqLabel(filterLabelA, "FILTER A");
         setupEqLabel(filterLabelB, "FILTER B");
         setupEqLabel(channelLabelGainA, "LEVEL A");
+        setupEqLabel(channelLabelGainB, "LEVEL B");
         setupEqLabel(channelLabelGainB, "LEVEL B");
         eqTitleA.setVisible(false);
         eqTitleB.setVisible(false);
@@ -958,8 +965,8 @@ private:
 
         timeA.setJustificationType(juce::Justification::centredLeft);
         timeB.setJustificationType(juce::Justification::centredLeft);
-        volumeLabelA.setText("VOLUME", juce::dontSendNotification);
-        volumeLabelB.setText("VOLUME", juce::dontSendNotification);
+        volumeLabelA.setText("VOLUME A", juce::dontSendNotification);
+        volumeLabelB.setText("VOLUME B", juce::dontSendNotification);
         for (auto* label : { &timeA, &timeB, &volumeLabelA, &volumeLabelB })
         {
             label->setColour(juce::Label::textColourId, juce::Colour(190, 200, 215));
