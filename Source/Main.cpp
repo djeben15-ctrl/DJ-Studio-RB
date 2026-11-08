@@ -634,9 +634,9 @@ public:
         eqHighB.setBounds(1105, 398, 130, 28);
         jogWheelB.setBounds(990, 432, 110, 110);
 
-        mixerPanel.setBounds(470, 105, 340, 455);
+        mixerPanel.setBounds(470, 105, 340, 520);
 
-        // LEVEL A/B are rotary gain knobs placed above each deck's LOW control.
+        // LEVEL A/B rotary controls stay at the top of their channel strips.
         channelLabelA.setBounds(510, 132, 110, 18);
         channelLabelB.setBounds(665, 132, 110, 18);
         channelLabelGainA.setBounds(510, 151, 110, 18);
@@ -644,7 +644,7 @@ public:
         channelLabelGainB.setBounds(665, 151, 110, 18);
         channelFaderB.setBounds(675, 168, 90, 58);
 
-        // EQ knobs remain vertically arranged under the LEVEL knobs.
+        // LOW / MID / HIGH remain in clean vertical columns.
         eqLabelLowA.setBounds(510, 226, 110, 18);
         eqLowA.setBounds(520, 242, 90, 58);
         eqLabelMidA.setBounds(510, 300, 110, 18);
@@ -659,21 +659,22 @@ public:
         eqLabelHighB.setBounds(665, 374, 110, 18);
         eqHighB.setBounds(675, 390, 90, 58);
 
-        // Dedicated vertical volume faders, with numeric readouts, at the former LEVEL area.
-        volumeLabelA.setBounds(480, 448, 62, 18);
-        volumeA.setBounds(485, 466, 58, 86);
-        volumeLabelB.setBounds(748, 448, 62, 18);
-        volumeB.setBounds(750, 466, 58, 86);
+        // Bottom row: compact vertical channel-volume faders and filter knobs.
+        volumeLabelA.setBounds(480, 450, 70, 18);
+        volumeA.setBounds(485, 468, 58, 62);
+        volumeLabelB.setBounds(742, 450, 70, 18);
+        volumeB.setBounds(747, 468, 58, 62);
 
-        filterLabelA.setBounds(560, 448, 72, 18);
-        filterA.setBounds(560, 466, 72, 58);
-        filterLabelB.setBounds(650, 448, 72, 18);
-        filterB.setBounds(650, 466, 72, 58);
+        filterLabelA.setBounds(560, 450, 72, 18);
+        filterA.setBounds(560, 468, 72, 54);
+        filterLabelB.setBounds(650, 450, 72, 18);
+        filterB.setBounds(650, 468, 72, 54);
 
-        masterLabel.setBounds(610, 486, 80, 18);
-        masterFader.setBounds(610, 502, 80, 48);
-        mixerLabel.setBounds(485, 540, 310, 18);
-        crossfader.setBounds(490, 554, 300, 26);
+        // Master has its own row; crossfader is below it with clear separation.
+        masterLabel.setBounds(610, 526, 80, 18);
+        masterFader.setBounds(610, 542, 80, 42);
+        mixerLabel.setBounds(485, 584, 310, 18);
+        crossfader.setBounds(490, 600, 300, 24);
         status.setBounds(100, 650, 1080, 25);
     }
 
