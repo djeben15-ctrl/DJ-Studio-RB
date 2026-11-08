@@ -292,19 +292,28 @@ public:
         mixerPanel.setText("MIXER");
         addAndMakeVisible(mixerPanel);
 
-        auto setupMixerFader = [this](juce::Slider& slider)
+        auto setupMixerKnob = [this](juce::Slider& slider)
         {
-            slider.setSliderStyle(juce::Slider::LinearHorizontal);
+            slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            slider.setRotaryParameters(juce::MathConstants<float>::pi * 1.2f,
+                                       juce::MathConstants<float>::pi * 2.8f, true);
             slider.setRange(0.0, 1.0, 0.01);
             slider.setValue(1.0);
-            slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-            slider.setColour(juce::Slider::trackColourId, juce::Colour(35, 210, 205));
+            slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 42, 18);
+            slider.setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(35, 210, 205));
             slider.setColour(juce::Slider::thumbColourId, juce::Colours::white);
+            slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);
             addAndMakeVisible(slider);
         };
-        setupMixerFader(channelFaderA);
-        setupMixerFader(channelFaderB);
-        setupMixerFader(masterFader);
+        setupMixerKnob(channelFaderA);
+        setupMixerKnob(channelFaderB);
+        setupMixerKnob(masterFader);
+        setupMixerKnob(filterA);
+        setupMixerKnob(filterB);
+        filterA.setRange(-1.0, 1.0, 0.01);
+        filterA.setValue(0.0);
+        filterB.setRange(-1.0, 1.0, 0.01);
+        filterB.setValue(0.0);
 
         crossfader.setSliderStyle(juce::Slider::LinearHorizontal);
         crossfader.setRange(0.0, 1.0, 0.001);
@@ -460,6 +469,8 @@ public:
                          static_cast<float>(eqLowB.getValue()),
                          static_cast<float>(eqMidB.getValue()),
                          static_cast<float>(eqHighB.getValue()), lowStateB, midStateB);
+        applyFilter(scratchA, info.numSamples, static_cast<float>(filterA.getValue()), filterStateA);
+        applyFilter(scratchB, info.numSamples, static_cast<float>(filterB.getValue()), filterStateB);
 
         const float gainA = (1.0f - blend) * static_cast<float>(volumeA.getValue())
                          * static_cast<float>(channelFaderA.getValue())
@@ -615,24 +626,30 @@ public:
         mixerPanel.setBounds(470, 105, 340, 455);
         channelLabelA.setBounds(485, 140, 45, 22);
         channelLabelB.setBounds(485, 245, 45, 22);
-        masterLabel.setBounds(485, 355, 70, 22);
         eqLabelLowA.setBounds(530, 140, 75, 22);
         eqLabelMidA.setBounds(610, 140, 75, 22);
         eqLabelHighA.setBounds(690, 140, 75, 22);
-        eqLowA.setBounds(530, 162, 75, 78);
-        eqMidA.setBounds(610, 162, 75, 78);
-        eqHighA.setBounds(690, 162, 75, 78);
+        eqLowA.setBounds(530, 162, 75, 88);
+        eqMidA.setBounds(610, 162, 75, 88);
+        eqHighA.setBounds(690, 162, 75, 88);
         eqLabelLowB.setBounds(530, 245, 75, 22);
         eqLabelMidB.setBounds(610, 245, 75, 22);
         eqLabelHighB.setBounds(690, 245, 75, 22);
-        eqLowB.setBounds(530, 267, 75, 78);
-        eqMidB.setBounds(610, 267, 75, 78);
-        eqHighB.setBounds(690, 267, 75, 78);
-        channelFaderA.setBounds(555, 355, 95, 24);
-        channelFaderB.setBounds(555, 385, 95, 24);
-        masterFader.setBounds(555, 415, 95, 24);
-        mixerLabel.setBounds(485, 455, 310, 22);
-        crossfader.setBounds(490, 480, 300, 42);
+        eqLowB.setBounds(530, 267, 75, 88);
+        eqMidB.setBounds(610, 267, 75, 88);
+        eqHighB.setBounds(690, 267, 75, 88);
+        filterLabelA.setBounds(520, 365, 65, 18);
+        filterA.setBounds(520, 382, 65, 72);
+        channelLabelGainA.setBounds(585, 365, 65, 18);
+        channelFaderA.setBounds(585, 382, 65, 72);
+        filterLabelB.setBounds(655, 365, 65, 18);
+        filterB.setBounds(655, 382, 65, 72);
+        channelLabelGainB.setBounds(720, 365, 65, 18);
+        channelFaderB.setBounds(720, 382, 65, 72);
+        masterLabel.setBounds(610, 450, 80, 18);
+        masterFader.setBounds(610, 465, 80, 65);
+        mixerLabel.setBounds(485, 535, 310, 20);
+        crossfader.setBounds(490, 552, 300, 30);
         status.setBounds(100, 650, 1080, 25);
     }
 
@@ -662,8 +679,9 @@ private:
 
     juce::Label title, mixerLabel, status, channelLabelA, channelLabelB, masterLabel;
     juce::Label eqLabelLowA, eqLabelMidA, eqLabelHighA, eqLabelLowB, eqLabelMidB, eqLabelHighB;
+    juce::Label filterLabelA, filterLabelB, channelLabelGainA, channelLabelGainB;
     juce::GroupComponent mixerPanel;
-    juce::Slider channelFaderA, channelFaderB, masterFader;
+    juce::Slider channelFaderA, channelFaderB, masterFader, filterA, filterB;
     juce::TextButton libraryButton;
     MusicLibraryPanel libraryPanel;
     juce::GroupComponent deckA, deckB;
@@ -683,6 +701,7 @@ private:
     float lowAlpha = 0.03f, midAlpha = 0.3f;
     float lowStateA[2] = { 0.0f, 0.0f }, midStateA[2] = { 0.0f, 0.0f };
     float lowStateB[2] = { 0.0f, 0.0f }, midStateB[2] = { 0.0f, 0.0f };
+    float filterStateA[2] = { 0.0f, 0.0f }, filterStateB[2] = { 0.0f, 0.0f };
 
     void renderScratchDeck(juce::AudioBuffer<float>& destination, int deckNumber, int numSamples)
     {
@@ -755,6 +774,31 @@ private:
         }
     }
 
+    void applyFilter(juce::AudioBuffer<float>& buffer, int numSamples,
+                     float amount, float* state)
+    {
+        if (std::abs(amount) < 0.001f)
+            return;
+
+        const float magnitude = std::abs(amount);
+        const float cutoff = amount < 0.0f
+            ? 18000.0f * std::pow(200.0f / 18000.0f, magnitude)
+            : 30.0f * std::pow(5000.0f / 30.0f, magnitude);
+        const float alpha = 1.0f - std::exp(-2.0f * juce::MathConstants<float>::pi
+                                            * cutoff / static_cast<float>(outputSampleRate));
+        for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        {
+            float* samples = buffer.getWritePointer(channel);
+            float low = state[channel];
+            for (int i = 0; i < numSamples; ++i)
+            {
+                low += alpha * (samples[i] - low);
+                samples[i] = amount < 0.0f ? low : samples[i] - low;
+            }
+            state[channel] = low;
+        }
+    }
+
     void setupDeckControls()
     {
         auto setupSeek = [this](juce::Slider& slider)
@@ -780,11 +824,11 @@ private:
 
         auto setupEq = [this](juce::Slider& slider)
         {
-            slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            slider.setSliderStyle(juce::Slider::LinearVertical);
             slider.setRange(0.0, 2.0, 0.01);
             slider.setValue(1.0);
             slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 42, 18);
-            slider.setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(35, 210, 205));
+            slider.setColour(juce::Slider::trackColourId, juce::Colour(35, 210, 205));
             slider.setColour(juce::Slider::thumbColourId, juce::Colours::white);
             slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);
             addAndMakeVisible(slider);
@@ -805,6 +849,10 @@ private:
         setupEqLabel(eqLabelLowB, "LOW");
         setupEqLabel(eqLabelMidB, "MID");
         setupEqLabel(eqLabelHighB, "HIGH");
+        setupEqLabel(filterLabelA, "FILTER A");
+        setupEqLabel(filterLabelB, "FILTER B");
+        setupEqLabel(channelLabelGainA, "LEVEL A");
+        setupEqLabel(channelLabelGainB, "LEVEL B");
         eqTitleA.setVisible(false);
         eqTitleB.setVisible(false);
 
