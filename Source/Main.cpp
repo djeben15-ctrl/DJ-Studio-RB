@@ -271,7 +271,7 @@ public:
     {
         formatManager.registerBasicFormats();
 
-        setSize(1100, 700);
+        setSize(1280, 720);
         setAudioChannels(0, 2);
 
         title.setText("DJ STUDIO RB", juce::dontSendNotification);
@@ -289,15 +289,43 @@ public:
         stopA.onClick = [this] { stopDeck(0); };
         stopB.onClick = [this] { stopDeck(1); };
 
+        mixerPanel.setText("MIXER");
+        addAndMakeVisible(mixerPanel);
+
+        auto setupMixerFader = [this](juce::Slider& slider)
+        {
+            slider.setSliderStyle(juce::Slider::LinearVertical);
+            slider.setRange(0.0, 1.0, 0.01);
+            slider.setValue(1.0);
+            slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+            slider.setColour(juce::Slider::trackColourId, juce::Colour(35, 210, 205));
+            slider.setColour(juce::Slider::thumbColourId, juce::Colours::white);
+            addAndMakeVisible(slider);
+        };
+        setupMixerFader(channelFaderA);
+        setupMixerFader(channelFaderB);
+        setupMixerFader(masterFader);
+
+        crossfader.setSliderStyle(juce::Slider::LinearHorizontal);
         crossfader.setRange(0.0, 1.0, 0.001);
         crossfader.setValue(0.5);
         crossfader.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
-        crossfader.setColour(juce::Slider::thumbColourId, juce::Colour(35, 210, 205));
+        crossfader.setColour(juce::Slider::trackColourId, juce::Colour(35, 210, 205));
+        crossfader.setColour(juce::Slider::thumbColourId, juce::Colours::white);
         addAndMakeVisible(crossfader);
 
-        mixerLabel.setText("CROSSFADER  A  ◀──────●──────▶  B", juce::dontSendNotification);
+        mixerLabel.setText("CROSSFADER   A  ◀────●────▶  B", juce::dontSendNotification);
         mixerLabel.setJustificationType(juce::Justification::centred);
         addAndMakeVisible(mixerLabel);
+        channelLabelA.setText("A", juce::dontSendNotification);
+        channelLabelB.setText("B", juce::dontSendNotification);
+        masterLabel.setText("MASTER", juce::dontSendNotification);
+        for (auto* label : { &channelLabelA, &channelLabelB, &masterLabel })
+        {
+            label->setJustificationType(juce::Justification::centred);
+            label->setColour(juce::Label::textColourId, juce::Colour(190, 200, 215));
+            addAndMakeVisible(label);
+        }
 
         status.setText("Listo. Carga una canción en cada deck.", juce::dontSendNotification);
         status.setJustificationType(juce::Justification::centred);
@@ -433,8 +461,12 @@ public:
                          static_cast<float>(eqMidB.getValue()),
                          static_cast<float>(eqHighB.getValue()), lowStateB, midStateB);
 
-        const float gainA = (1.0f - blend) * static_cast<float>(volumeA.getValue());
-        const float gainB = blend * static_cast<float>(volumeB.getValue());
+        const float gainA = (1.0f - blend) * static_cast<float>(volumeA.getValue())
+                         * static_cast<float>(channelFaderA.getValue())
+                         * static_cast<float>(masterFader.getValue());
+        const float gainB = blend * static_cast<float>(volumeB.getValue())
+                         * static_cast<float>(channelFaderB.getValue())
+                         * static_cast<float>(masterFader.getValue());
 
         // A jog seek is performed only after its deck fades to silence.
         // The message-thread timer then changes the transport position and requests a fade-in.
@@ -546,42 +578,50 @@ public:
         title.setBounds(0, 18, getWidth(), 55);
         libraryButton.setBounds(getWidth() - 175, 28, 140, 34);
         libraryPanel.setBounds(getLocalBounds());
-        deckA.setBounds(35, 100, 480, 470);
-        deckB.setBounds(585, 100, 480, 470);
 
-        loadA.setBounds(65, 155, 120, 42);
-        playA.setBounds(195, 155, 100, 42);
-        stopA.setBounds(305, 155, 100, 42);
-        trackA.setBounds(65, 210, 410, 48);
-        timeA.setBounds(65, 265, 410, 24);
-        seekA.setBounds(65, 290, 410, 24);
-        cueA.setBounds(65, 330, 90, 34);
-        volumeLabelA.setBounds(170, 330, 90, 34);
-        volumeA.setBounds(260, 330, 215, 34);
-        eqTitleA.setBounds(65, 372, 410, 20);
-        eqLowA.setBounds(65, 398, 125, 28);
-        eqMidA.setBounds(205, 398, 125, 28);
-        eqHighA.setBounds(345, 398, 130, 28);
-        jogWheelA.setBounds(220, 432, 110, 110);
+        deckA.setBounds(20, 100, 460, 470);
+        deckB.setBounds(800, 100, 460, 470);
 
-        loadB.setBounds(615, 155, 120, 42);
-        playB.setBounds(745, 155, 100, 42);
-        stopB.setBounds(855, 155, 100, 42);
-        trackB.setBounds(615, 210, 410, 48);
-        timeB.setBounds(615, 265, 410, 24);
-        seekB.setBounds(615, 290, 410, 24);
-        cueB.setBounds(615, 330, 90, 34);
-        volumeLabelB.setBounds(720, 330, 90, 34);
-        volumeB.setBounds(810, 330, 215, 34);
-        eqTitleB.setBounds(615, 372, 410, 20);
-        eqLowB.setBounds(615, 398, 125, 28);
-        eqMidB.setBounds(755, 398, 125, 28);
-        eqHighB.setBounds(895, 398, 130, 28);
-        jogWheelB.setBounds(770, 432, 110, 110);
+        loadA.setBounds(50, 155, 120, 42);
+        playA.setBounds(180, 155, 100, 42);
+        stopA.setBounds(290, 155, 100, 42);
+        trackA.setBounds(50, 210, 400, 48);
+        timeA.setBounds(50, 265, 400, 24);
+        seekA.setBounds(50, 290, 400, 24);
+        cueA.setBounds(50, 330, 90, 34);
+        volumeLabelA.setBounds(155, 330, 90, 34);
+        volumeA.setBounds(245, 330, 205, 34);
+        eqTitleA.setBounds(50, 372, 400, 20);
+        eqLowA.setBounds(50, 398, 120, 28);
+        eqMidA.setBounds(185, 398, 120, 28);
+        eqHighA.setBounds(320, 398, 130, 28);
+        jogWheelA.setBounds(195, 432, 110, 110);
 
-        mixerLabel.setBounds(350, 575, 400, 25);
-        crossfader.setBounds(300, 600, 500, 40);
-        status.setBounds(100, 650, 900, 25);
+        loadB.setBounds(830, 155, 120, 42);
+        playB.setBounds(960, 155, 100, 42);
+        stopB.setBounds(1070, 155, 100, 42);
+        trackB.setBounds(830, 210, 400, 48);
+        timeB.setBounds(830, 265, 400, 24);
+        seekB.setBounds(830, 290, 400, 24);
+        cueB.setBounds(830, 330, 90, 34);
+        volumeLabelB.setBounds(935, 330, 90, 34);
+        volumeB.setBounds(1025, 330, 205, 34);
+        eqTitleB.setBounds(830, 372, 400, 20);
+        eqLowB.setBounds(830, 398, 120, 28);
+        eqMidB.setBounds(965, 398, 120, 28);
+        eqHighB.setBounds(1100, 398, 130, 28);
+        jogWheelB.setBounds(975, 432, 110, 110);
+
+        mixerPanel.setBounds(510, 105, 260, 455);
+        channelLabelA.setBounds(525, 145, 45, 24);
+        channelLabelB.setBounds(590, 145, 45, 24);
+        masterLabel.setBounds(690, 145, 65, 24);
+        channelFaderA.setBounds(525, 170, 45, 235);
+        channelFaderB.setBounds(590, 170, 45, 235);
+        masterFader.setBounds(700, 170, 45, 235);
+        mixerLabel.setBounds(520, 425, 240, 25);
+        crossfader.setBounds(530, 455, 220, 42);
+        status.setBounds(100, 650, 1080, 25);
     }
 
 private:
@@ -608,7 +648,9 @@ private:
     bool jogFadingInA = false, jogFadingInB = false;
     std::unique_ptr<juce::FileChooser> chooserA, chooserB;
 
-    juce::Label title, mixerLabel, status;
+    juce::Label title, mixerLabel, status, channelLabelA, channelLabelB, masterLabel;
+    juce::GroupComponent mixerPanel;
+    juce::Slider channelFaderA, channelFaderB, masterFader;
     juce::TextButton libraryButton;
     MusicLibraryPanel libraryPanel;
     juce::GroupComponent deckA, deckB;
@@ -1070,7 +1112,7 @@ class DJStudioRBApplication : public juce::JUCEApplication
 {
 public:
     const juce::String getApplicationName() override { return "DJ Studio RB"; }
-    const juce::String getApplicationVersion() override { return "0.6.0"; }
+    const juce::String getApplicationVersion() override { return "0.8.0"; }
 
     void initialise(const juce::String&) override { window.reset(new MainWindow()); }
     void shutdown() override { window = nullptr; }
