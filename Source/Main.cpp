@@ -107,6 +107,163 @@ private:
     }
 };
 
+class MusicLibraryPanel : public juce::Component, private juce::ListBoxModel
+{
+public:
+    std::function<void(int, const juce::File&)> onLoadTrack;
+    std::function<void()> onClose;
+
+    MusicLibraryPanel()
+    {
+        heading.setText("BIBLIOTECA MUSICAL", juce::dontSendNotification);
+        heading.setFont(juce::Font(25.0f, juce::Font::bold));
+        heading.setJustificationType(juce::Justification::centred);
+        addAndMakeVisible(heading);
+
+        chooseFolder.setButtonText("ELEGIR CARPETA MUSICAL");
+        searchLabel.setText("BUSCAR", juce::dontSendNotification);
+        search.setTextToShowWhenEmpty("Nombre de canción o artista...", juce::Colours::grey);
+        search.onTextChange = [this] { refreshFilteredTracks(); };
+        addAndMakeVisible(chooseFolder);
+        addAndMakeVisible(searchLabel);
+        addAndMakeVisible(search);
+        chooseFolder.onClick = [this] { chooseMusicFolder(); };
+
+        tracks.setModel(this);
+        tracks.setColour(juce::ListBox::backgroundColourId, juce::Colour(24, 29, 38));
+        tracks.setColour(juce::ListBox::outlineColourId, juce::Colour(70, 83, 98));
+        addAndMakeVisible(tracks);
+
+        loadA.setButtonText("CARGAR SELECCIÓN EN DECK A");
+        loadB.setButtonText("CARGAR SELECCIÓN EN DECK B");
+        close.setButtonText("VOLVER A MEZCLADORA");
+        addAndMakeVisible(loadA);
+        addAndMakeVisible(loadB);
+        addAndMakeVisible(close);
+
+        loadA.onClick = [this] { loadSelected(0); };
+        loadB.onClick = [this] { loadSelected(1); };
+        close.onClick = [this] { if (onClose) onClose(); };
+
+        info.setText("Elige una carpeta para buscar canciones de audio.", juce::dontSendNotification);
+        info.setColour(juce::Label::textColourId, juce::Colour(180, 190, 205));
+        info.setJustificationType(juce::Justification::centredLeft);
+        addAndMakeVisible(info);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced(28);
+        heading.setBounds(area.removeFromTop(45));
+        area.removeFromTop(12);
+        auto top = area.removeFromTop(42);
+        chooseFolder.setBounds(top.removeFromLeft(245));
+        top.removeFromLeft(18);
+        searchLabel.setBounds(top.removeFromLeft(75));
+        search.setBounds(top);
+        area.removeFromTop(12);
+        info.setBounds(area.removeFromBottom(30));
+        area.removeFromBottom(8);
+        auto buttons = area.removeFromBottom(42);
+        loadA.setBounds(buttons.removeFromLeft(buttons.getWidth() / 2 - 8));
+        buttons.removeFromLeft(16);
+        loadB.setBounds(buttons.removeFromLeft(buttons.getWidth() - 190));
+        buttons.removeFromLeft(10);
+        close.setBounds(buttons);
+        area.removeFromBottom(8);
+        tracks.setBounds(area);
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        g.fillAll(juce::Colour(18, 20, 27));
+        g.setColour(juce::Colour(35, 39, 49));
+        g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(15), 15.0f);
+    }
+
+private:
+    juce::Label heading, searchLabel, info;
+    juce::TextButton chooseFolder, loadA, loadB, close;
+    juce::TextEditor search;
+    juce::ListBox tracks;
+    std::unique_ptr<juce::FileChooser> folderChooser;
+    juce::Array<juce::File> allTracks, filteredTracks;
+
+    int getNumRows() override { return filteredTracks.size(); }
+
+    void paintListBoxItem(int row, juce::Graphics& g, int width, int height, bool selected) override
+    {
+        if (!juce::isPositiveAndBelow(row, filteredTracks.size()))
+            return;
+        if (selected)
+            g.fillAll(juce::Colour(35, 95, 100));
+        else if (row % 2 == 0)
+        {
+            g.setColour(juce::Colour(29, 35, 45));
+            g.fillRect(0, 0, width, height);
+        }
+        g.setColour(juce::Colours::white);
+        g.setFont(juce::Font(14.0f));
+        g.drawText(filteredTracks.getReference(row).getFileName(), 12, 0, width - 24, height,
+                   juce::Justification::centredLeft, true);
+    }
+
+    void chooseMusicFolder()
+    {
+        folderChooser = std::make_unique<juce::FileChooser>(
+            "Selecciona tu carpeta de música",
+            juce::File::getSpecialLocation(juce::File::userMusicDirectory));
+        folderChooser->launchAsync(juce::FileBrowserComponent::openMode |
+                                   juce::FileBrowserComponent::canSelectDirectories,
+            [this](const juce::FileChooser& chooser)
+            {
+                const auto folder = chooser.getResult();
+                if (folder.isDirectory())
+                    scanFolder(folder);
+            });
+    }
+
+    void scanFolder(const juce::File& folder)
+    {
+        allTracks.clear();
+        juce::Array<juce::File> found;
+        folder.findChildFiles(found, juce::File::findFiles, true);
+        for (const auto& file : found)
+        {
+            const auto ext = file.getFileExtension().toLowerCase();
+            if (ext == ".mp3" || ext == ".wav" || ext == ".aif" ||
+                ext == ".aiff" || ext == ".flac" || ext == ".ogg")
+                allTracks.add(file);
+        }
+        refreshFilteredTracks();
+        info.setText(juce::String(allTracks.size()) + " canciones encontradas en: " +
+                     folder.getFileName(), juce::dontSendNotification);
+    }
+
+    void refreshFilteredTracks()
+    {
+        filteredTracks.clear();
+        const auto query = search.getText().trim().toLowerCase();
+        for (const auto& file : allTracks)
+            if (query.isEmpty() || file.getFileName().toLowerCase().contains(query))
+                filteredTracks.add(file);
+        tracks.updateContent();
+        tracks.deselectAllRows();
+    }
+
+    void loadSelected(int deck)
+    {
+        const int row = tracks.getSelectedRow();
+        if (!juce::isPositiveAndBelow(row, filteredTracks.size()))
+        {
+            info.setText("Selecciona primero una canción de la lista.", juce::dontSendNotification);
+            return;
+        }
+        if (onLoadTrack)
+            onLoadTrack(deck, filteredTracks.getReference(row));
+    }
+};
+
 class DJStudioRB : public juce::AudioAppComponent, private juce::Timer, public juce::FileDragAndDropTarget
 {
 public:
@@ -148,6 +305,23 @@ public:
         addAndMakeVisible(status);
 
         setupDeckControls();
+
+        libraryButton.setButtonText("BIBLIOTECA");
+        libraryButton.onClick = [this]
+        {
+            libraryPanel.setVisible(true);
+            libraryPanel.toFront(true);
+        };
+        addAndMakeVisible(libraryButton);
+        libraryPanel.onLoadTrack = [this](int deck, const juce::File& file)
+        {
+            loadTrackFromFile(deck, file);
+            libraryPanel.setVisible(false);
+        };
+        libraryPanel.onClose = [this] { libraryPanel.setVisible(false); };
+        addAndMakeVisible(libraryPanel);
+        libraryPanel.setVisible(false);
+
         startTimerHz(60);
     }
 
@@ -370,6 +544,8 @@ public:
     void resized() override
     {
         title.setBounds(0, 18, getWidth(), 55);
+        libraryButton.setBounds(getWidth() - 175, 28, 140, 34);
+        libraryPanel.setBounds(getLocalBounds());
         deckA.setBounds(35, 100, 480, 470);
         deckB.setBounds(585, 100, 480, 470);
 
@@ -433,6 +609,8 @@ private:
     std::unique_ptr<juce::FileChooser> chooserA, chooserB;
 
     juce::Label title, mixerLabel, status;
+    juce::TextButton libraryButton;
+    MusicLibraryPanel libraryPanel;
     juce::GroupComponent deckA, deckB;
     juce::TextButton loadA{"CARGAR"};
     juce::TextButton playA{"PLAY"};
