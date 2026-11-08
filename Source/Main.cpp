@@ -642,6 +642,8 @@ private:
         auto& label = (deckNumber == 0 ? timeA : timeB);
         const double length = transport.getLengthInSeconds();
         const double position = transport.getCurrentPosition();
+        auto& jogWheel = (deckNumber == 0 ? jogWheelA : jogWheelB);
+        jogWheel.setPosition(length > 0.0 ? position / length : 0.0);
 
         if (!slider.isMouseButtonDown())
             slider.setValue(length > 0.0 ? position / length : 0.0,
