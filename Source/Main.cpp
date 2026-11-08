@@ -129,6 +129,7 @@ private:
     juce::AudioTransportSource transportA, transportB;
     std::unique_ptr<juce::AudioFormatReaderSource> readerA, readerB;
     juce::AudioBuffer<float> scratchA, scratchB;
+    std::unique_ptr<juce::FileChooser> chooserA, chooserB;
 
     juce::Label title, mixerLabel, status;
     juce::GroupComponent deckA, deckB;
@@ -163,14 +164,25 @@ private:
 
     void loadTrack(int deckNumber)
     {
-        juce::FileChooser chooser("Selecciona una canción de audio",
-                                  juce::File::getSpecialLocation(juce::File::userMusicDirectory),
-                                  "*.mp3;*.wav;*.aif;*.aiff;*.flac;*.ogg");
+        auto& chooser = (deckNumber == 0 ? chooserA : chooserB);
+        chooser = std::make_unique<juce::FileChooser>(
+            "Selecciona una canción de audio",
+            juce::File::getSpecialLocation(juce::File::userMusicDirectory),
+            "*.mp3;*.wav;*.aif;*.aiff;*.flac;*.ogg");
 
-        if (!chooser.browseForFileToOpen())
-            return;
+        chooser->launchAsync(
+            juce::FileBrowserComponent::openMode |
+            juce::FileBrowserComponent::canSelectFiles,
+            [this, deckNumber](const juce::FileChooser& fileChooser)
+            {
+                const juce::File file = fileChooser.getResult();
+                if (file.existsAsFile())
+                    loadTrackFromFile(deckNumber, file);
+            });
+    }
 
-        const juce::File file = chooser.getResult();
+    void loadTrackFromFile(int deckNumber, const juce::File& file)
+    {
         std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
 
         if (reader == nullptr)
@@ -179,6 +191,7 @@ private:
             return;
         }
 
+        const double sourceSampleRate = reader->sampleRate;
         std::unique_ptr<juce::AudioFormatReaderSource> newSource(
             new juce::AudioFormatReaderSource(reader.release(), true));
 
@@ -188,7 +201,7 @@ private:
             transportA.setSource(nullptr);
             readerA.reset();
             readerA = std::move(newSource);
-            transportA.setSource(readerA.get(), 0, nullptr, readerA->getAudioFormatReader()->sampleRate);
+            transportA.setSource(readerA.get(), 0, nullptr, sourceSampleRate);
             trackA.setText(file.getFileName(), juce::dontSendNotification);
         }
         else
@@ -197,7 +210,7 @@ private:
             transportB.setSource(nullptr);
             readerB.reset();
             readerB = std::move(newSource);
-            transportB.setSource(readerB.get(), 0, nullptr, readerB->getAudioFormatReader()->sampleRate);
+            transportB.setSource(readerB.get(), 0, nullptr, sourceSampleRate);
             trackB.setText(file.getFileName(), juce::dontSendNotification);
         }
 
