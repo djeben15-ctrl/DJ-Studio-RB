@@ -833,11 +833,14 @@ private:
 
         auto setupEq = [this](juce::Slider& slider)
         {
-            slider.setSliderStyle(juce::Slider::LinearVertical);
+            // Rotary EQ knobs with a compact value readout underneath.
+            slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+            slider.setRotaryParameters(juce::MathConstants<float>::pi * 1.2f,
+                                       juce::MathConstants<float>::pi * 2.8f, true);
             slider.setRange(0.0, 2.0, 0.01);
             slider.setValue(1.0);
             slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 42, 18);
-            slider.setColour(juce::Slider::trackColourId, juce::Colour(35, 210, 205));
+            slider.setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(35, 210, 205));
             slider.setColour(juce::Slider::thumbColourId, juce::Colours::white);
             slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);
             addAndMakeVisible(slider);
