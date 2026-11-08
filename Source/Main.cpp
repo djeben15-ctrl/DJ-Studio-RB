@@ -357,7 +357,8 @@ public:
         };
         setupMixerKnob(channelFaderA);
         setupMixerKnob(channelFaderB);
-        setupMixerKnob(masterFader);\n        masterFader.setValue(0.85);
+        setupMixerKnob(masterFader);
+        masterFader.setValue(0.85);
         setupMixerKnob(filterA);
         setupMixerKnob(filterB);
         filterA.setRange(-1.0, 1.0, 0.01);
@@ -378,7 +379,17 @@ public:
         addAndMakeVisible(mixerLabel);
         channelLabelA.setText("A", juce::dontSendNotification);
         channelLabelB.setText("B", juce::dontSendNotification);
-        masterLabel.setText("MASTER", juce::dontSendNotification);\n        vuLabelA.setText("VU A", juce::dontSendNotification);\n        vuLabelB.setText("VU B", juce::dontSendNotification);\n        for (auto* label : { &vuLabelA, &vuLabelB })\n        {\n            label->setJustificationType(juce::Justification::centred);\n            label->setColour(juce::Label::textColourId, juce::Colour(190, 200, 215));\n            addAndMakeVisible(label);\n        }\n        addAndMakeVisible(vuMeterA);\n        addAndMakeVisible(vuMeterB);
+        masterLabel.setText("MASTER", juce::dontSendNotification);
+        vuLabelA.setText("VU A", juce::dontSendNotification);
+        vuLabelB.setText("VU B", juce::dontSendNotification);
+        for (auto* label : { &vuLabelA, &vuLabelB })
+        {
+            label->setJustificationType(juce::Justification::centred);
+            label->setColour(juce::Label::textColourId, juce::Colour(190, 200, 215));
+            addAndMakeVisible(label);
+        }
+        addAndMakeVisible(vuMeterA);
+        addAndMakeVisible(vuMeterB);
         for (auto* label : { &channelLabelA, &channelLabelB, &masterLabel })
         {
             label->setJustificationType(juce::Justification::centred);
@@ -569,7 +580,8 @@ public:
                 jogSeekReadyB.store(true);
         }
 
-        float peakA = 0.0f, peakB = 0.0f;\n        const float fadeStep = 1.0f / static_cast<float>(jogFadeLength);
+        float peakA = 0.0f, peakB = 0.0f;
+        const float fadeStep = 1.0f / static_cast<float>(jogFadeLength);
         for (int sample = 0; sample < info.numSamples; ++sample)
         {
             for (int channel = 0; channel < channels; ++channel)
@@ -741,7 +753,9 @@ private:
     bool jogFadingInA = false, jogFadingInB = false;
     std::unique_ptr<juce::FileChooser> chooserA, chooserB;
 
-    juce::Label title, mixerLabel, status, channelLabelA, channelLabelB, masterLabel, vuLabelA, vuLabelB;\n    VUMeter vuMeterA, vuMeterB;\n    std::atomic<float> meterLevelA{ 0.0f }, meterLevelB{ 0.0f };
+    juce::Label title, mixerLabel, status, channelLabelA, channelLabelB, masterLabel, vuLabelA, vuLabelB;
+    VUMeter vuMeterA, vuMeterB;
+    std::atomic<float> meterLevelA{ 0.0f }, meterLevelB{ 0.0f };
     juce::Label eqLabelLowA, eqLabelMidA, eqLabelHighA, eqLabelLowB, eqLabelMidB, eqLabelHighB;
     juce::Label filterLabelA, filterLabelB, channelLabelGainA, channelLabelGainB;
     juce::GroupComponent mixerPanel;
