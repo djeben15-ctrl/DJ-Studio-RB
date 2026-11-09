@@ -299,8 +299,8 @@ public:
             const float halfHeight = juce::jmax(2.0f, area.getHeight() * 0.43f);
             for (int x = 0; x < columns; ++x)
             {
-                const int start = static_cast<int>((static_cast<int64>(x) * samples) / columns);
-                const int end = juce::jmax(start + 1, static_cast<int>((static_cast<int64>(x + 1) * samples) / columns));
+                const int start = static_cast<int>((static_cast<juce::int64>(x) * samples) / columns);
+                const int end = juce::jmax(start + 1, static_cast<int>((static_cast<juce::int64>(x + 1) * samples) / columns));
                 float peak = 0.0f;
                 for (int ch = 0; ch < channels; ++ch)
                 {
