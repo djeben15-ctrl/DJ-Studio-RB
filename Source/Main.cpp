@@ -652,93 +652,104 @@ public:
 
     void resized() override
     {
-        title.setBounds(0, 18, getWidth(), 55);
-        libraryButton.setBounds(getWidth() - 175, 28, 140, 34);
+        const int w = getWidth();
+        const int margin = 18;
+        const int gap = 14;
+        const int mixerW = juce::jlimit(286, 320, w / 4);
+        const int deckW = juce::jmax(360, (w - 2 * margin - mixerW - 2 * gap) / 2);
+        const int deckY = 100;
+        const int deckH = 470;
+        const int mixerX = margin + deckW + gap;
+        const int deckBX = mixerX + mixerW + gap;
+
+        title.setBounds(0, 18, w, 55);
+        libraryButton.setBounds(w - margin - 140, 28, 140, 34);
         libraryPanel.setBounds(getLocalBounds());
 
-        deckA.setBounds(20, 100, 430, 470);
-        deckB.setBounds(830, 100, 430, 470);
+        // Equal-width decks, mirrored around the centered mixer.
+        deckA.setBounds(margin, deckY, deckW, deckH);
+        deckB.setBounds(deckBX, deckY, deckW, deckH);
 
-        loadA.setBounds(45, 155, 115, 42);
-        playA.setBounds(170, 155, 95, 42);
-        stopA.setBounds(275, 155, 95, 42);
-        trackA.setBounds(45, 210, 380, 48);
-        timeA.setBounds(45, 265, 380, 24);
-        seekA.setBounds(45, 290, 380, 24);
-        cueA.setBounds(45, 330, 85, 34);
-        volumeLabelA.setBounds(140, 330, 85, 34);
-        volumeA.setBounds(225, 330, 200, 34);
-        eqTitleA.setBounds(45, 372, 380, 20);
-        eqLowA.setBounds(45, 398, 100, 28);
-        eqMidA.setBounds(170, 398, 100, 28);
-        eqHighA.setBounds(295, 398, 130, 28);
-        jogWheelA.setBounds(180, 432, 110, 110);
-        // VU meters centered in the mixer, between channel A and channel B.
-        vuLabelA.setBounds(608, 278, 38, 20);
-        vuMeterA.setBounds(617, 300, 18, 108);
+        const int buttonY = 155;
+        const int buttonGap = 10;
+        const int loadW = 112, playW = 92, stopW = 92;
+        const int buttonsWidth = loadW + playW + stopW + 2 * buttonGap;
 
-        loadB.setBounds(855, 155, 115, 42);
-        playB.setBounds(980, 155, 95, 42);
-        stopB.setBounds(1085, 155, 95, 42);
-        trackB.setBounds(855, 210, 380, 48);
-        timeB.setBounds(855, 265, 380, 24);
-        seekB.setBounds(855, 290, 380, 24);
-        cueB.setBounds(855, 330, 85, 34);
-        volumeLabelB.setBounds(950, 330, 85, 34);
-        volumeB.setBounds(1035, 330, 200, 34);
-        eqTitleB.setBounds(855, 372, 380, 20);
-        eqLowB.setBounds(855, 398, 100, 28);
-        eqMidB.setBounds(980, 398, 100, 28);
-        eqHighB.setBounds(1105, 398, 130, 28);
-        jogWheelB.setBounds(990, 432, 110, 110);
-        vuLabelB.setBounds(640, 278, 38, 20);
-        vuMeterB.setBounds(649, 300, 18, 108);
+        const int buttonsAX = margin + (deckW - buttonsWidth) / 2;
+        loadA.setBounds(buttonsAX, buttonY, loadW, 42);
+        playA.setBounds(buttonsAX + loadW + buttonGap, buttonY, playW, 42);
+        stopA.setBounds(buttonsAX + loadW + buttonGap + playW + buttonGap, buttonY, stopW, 42);
+        trackA.setBounds(margin + 20, 210, deckW - 40, 48);
+        timeA.setBounds(margin + 20, 265, deckW - 40, 24);
+        seekA.setBounds(margin + 20, 290, deckW - 40, 24);
+        cueA.setBounds(margin + 20, 330, 85, 34);
+        volumeLabelA.setBounds(margin + 115, 330, 85, 34);
+        volumeA.setBounds(margin + 200, 330, deckW - 225, 34);
+        jogWheelA.setBounds(margin + (deckW - 110) / 2, 432, 110, 110);
 
-        mixerPanel.setBounds(470, 105, 340, 540);
+        const int buttonsBX = deckBX + (deckW - buttonsWidth) / 2;
+        loadB.setBounds(buttonsBX, buttonY, loadW, 42);
+        playB.setBounds(buttonsBX + loadW + buttonGap, buttonY, playW, 42);
+        stopB.setBounds(buttonsBX + loadW + buttonGap + playW + buttonGap, buttonY, stopW, 42);
+        trackB.setBounds(deckBX + 20, 210, deckW - 40, 48);
+        timeB.setBounds(deckBX + 20, 265, deckW - 40, 24);
+        seekB.setBounds(deckBX + 20, 290, deckW - 40, 24);
+        cueB.setBounds(deckBX + 20, 330, 85, 34);
+        volumeLabelB.setBounds(deckBX + 115, 330, 85, 34);
+        volumeB.setBounds(deckBX + 200, 330, deckW - 225, 34);
+        jogWheelB.setBounds(deckBX + (deckW - 110) / 2, 432, 110, 110);
 
-        // LEVEL A/B rotary controls stay at the top of their channel strips.
-        channelLabelA.setBounds(510, 132, 110, 18);
-        channelLabelB.setBounds(665, 132, 110, 18);
-        channelLabelGainA.setBounds(510, 151, 110, 18);
-        channelFaderA.setBounds(520, 168, 90, 58);
-        channelLabelGainB.setBounds(665, 151, 110, 18);
-        channelFaderB.setBounds(675, 168, 90, 58);
+        mixerPanel.setBounds(mixerX, 105, mixerW, 540);
 
-        // LOW / MID / HIGH remain in clean vertical columns.
-        eqLabelLowA.setBounds(510, 226, 110, 18);
-        eqLowA.setBounds(520, 242, 90, 58);
-        eqLabelMidA.setBounds(510, 300, 110, 18);
-        eqMidA.setBounds(520, 316, 90, 58);
-        eqLabelHighA.setBounds(510, 374, 110, 18);
-        eqHighA.setBounds(520, 390, 90, 58);
+        const int colW = 90;
+        const int colAX = mixerX + 12;
+        const int colBX = mixerX + mixerW - 12 - colW;
 
-        eqLabelLowB.setBounds(665, 226, 110, 18);
-        eqLowB.setBounds(675, 242, 90, 58);
-        eqLabelMidB.setBounds(665, 300, 110, 18);
-        eqMidB.setBounds(675, 316, 90, 58);
-        eqLabelHighB.setBounds(665, 374, 110, 18);
-        eqHighB.setBounds(675, 390, 90, 58);
+        channelLabelA.setBounds(colAX, 132, colW, 18);
+        channelLabelB.setBounds(colBX, 132, colW, 18);
+        channelLabelGainA.setBounds(colAX, 151, colW, 18);
+        channelFaderA.setBounds(colAX + 5, 168, colW - 10, 58);
+        channelLabelGainB.setBounds(colBX, 151, colW, 18);
+        channelFaderB.setBounds(colBX + 5, 168, colW - 10, 58);
 
-        // Bottom row: compact vertical channel-volume faders and filter knobs.
-        volumeLabelA.setBounds(480, 450, 70, 18);
-        volumeA.setBounds(485, 468, 58, 62);
-        volumeLabelB.setBounds(742, 450, 70, 18);
-        volumeB.setBounds(747, 468, 58, 62);
+        eqLabelLowA.setBounds(colAX, 226, colW, 18);
+        eqLowA.setBounds(colAX + 5, 242, colW - 10, 58);
+        eqLabelMidA.setBounds(colAX, 300, colW, 18);
+        eqMidA.setBounds(colAX + 5, 316, colW - 10, 58);
+        eqLabelHighA.setBounds(colAX, 374, colW, 18);
+        eqHighA.setBounds(colAX + 5, 390, colW - 10, 58);
 
-        filterLabelA.setBounds(560, 450, 72, 18);
-        filterA.setBounds(560, 468, 72, 54);
-        filterLabelB.setBounds(650, 450, 72, 18);
-        filterB.setBounds(650, 468, 72, 54);
+        eqLabelLowB.setBounds(colBX, 226, colW, 18);
+        eqLowB.setBounds(colBX + 5, 242, colW - 10, 58);
+        eqLabelMidB.setBounds(colBX, 300, colW, 18);
+        eqMidB.setBounds(colBX + 5, 316, colW - 10, 58);
+        eqLabelHighB.setBounds(colBX, 374, colW, 18);
+        eqHighB.setBounds(colBX + 5, 390, colW - 10, 58);
 
-        // Master has its own row; crossfader is below it with clear separation.
-        masterLabel.setBounds(610, 526, 80, 18);
-        masterFader.setBounds(610, 542, 80, 42);
-        clipLabel.setBounds(695, 542, 55, 26);
-        mixerLabel.setBounds(485, 584, 310, 18);
-        crossfader.setBounds(490, 600, 300, 24);
-        status.setBounds(100, 650, 1080, 25);
+        // Keep both VU meters paired and centered between A and B channels.
+        const int vuX = mixerX + (mixerW - 42) / 2;
+        vuLabelA.setBounds(vuX - 2, 278, 22, 20);
+        vuMeterA.setBounds(vuX, 300, 18, 108);
+        vuLabelB.setBounds(vuX + 22, 278, 22, 20);
+        vuMeterB.setBounds(vuX + 22, 300, 18, 108);
+
+        volumeLabelA.setBounds(mixerX + 8, 450, 70, 18);
+        volumeA.setBounds(mixerX + 12, 468, 58, 62);
+        volumeLabelB.setBounds(mixerX + mixerW - 78, 450, 70, 18);
+        volumeB.setBounds(mixerX + mixerW - 70, 468, 58, 62);
+
+        filterLabelA.setBounds(mixerX + 82, 450, 72, 18);
+        filterA.setBounds(mixerX + 82, 468, 72, 54);
+        filterLabelB.setBounds(mixerX + mixerW - 154, 450, 72, 18);
+        filterB.setBounds(mixerX + mixerW - 154, 468, 72, 54);
+
+        masterLabel.setBounds(mixerX + (mixerW - 80) / 2, 526, 80, 18);
+        masterFader.setBounds(mixerX + (mixerW - 80) / 2, 542, 80, 42);
+        clipLabel.setBounds(mixerX + mixerW - 66, 542, 55, 26);
+        mixerLabel.setBounds(mixerX + 15, 584, mixerW - 30, 18);
+        crossfader.setBounds(mixerX + 20, 600, mixerW - 40, 24);
+        status.setBounds(margin, 650, w - 2 * margin, 25);
     }
-
 private:
     juce::AudioFormatManager formatManager;
     juce::AudioTransportSource transportA, transportB;
