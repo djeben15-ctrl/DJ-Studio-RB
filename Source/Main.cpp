@@ -386,6 +386,7 @@ public:
         {
             label->setJustificationType(juce::Justification::centred);
             label->setColour(juce::Label::textColourId, juce::Colour(190, 200, 215));
+            label->setFont(juce::Font(10.0f, juce::Font::bold));
             addAndMakeVisible(label);
         }
         addAndMakeVisible(vuMeterA);
@@ -674,8 +675,8 @@ public:
         eqHighA.setBounds(295, 398, 130, 28);
         jogWheelA.setBounds(180, 432, 110, 110);
         // VU meters centered in the mixer, between channel A and channel B.
-        vuLabelA.setBounds(615, 280, 24, 18);
-        vuMeterA.setBounds(621, 300, 12, 88);
+        vuLabelA.setBounds(610, 278, 34, 20);
+        vuMeterA.setBounds(620, 300, 15, 100);
 
         loadB.setBounds(855, 155, 115, 42);
         playB.setBounds(980, 155, 95, 42);
@@ -691,8 +692,8 @@ public:
         eqMidB.setBounds(980, 398, 100, 28);
         eqHighB.setBounds(1105, 398, 130, 28);
         jogWheelB.setBounds(990, 432, 110, 110);
-        vuLabelB.setBounds(645, 280, 24, 18);
-        vuMeterB.setBounds(651, 300, 12, 88);
+        vuLabelB.setBounds(642, 278, 34, 20);
+        vuMeterB.setBounds(652, 300, 15, 100);
 
         mixerPanel.setBounds(470, 105, 340, 540);
 
