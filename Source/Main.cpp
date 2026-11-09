@@ -1206,7 +1206,7 @@ private:
 
         // Execute controller requests safely on JUCE's message thread.
         if (midiPlayARequest.exchange(false))
-            startDeck(0);
+            toggleDeckPlayback(0);
         if (midiPlayBRequest.exchange(false))
             toggleDeckPlayback(1);
         if (midiDeckBLevelRequest.exchange(false))
