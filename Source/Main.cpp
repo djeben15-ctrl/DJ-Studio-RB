@@ -279,23 +279,22 @@ public:
         auto bounds = getLocalBounds().toFloat().reduced(2.0f);
         g.setColour(juce::Colour(8, 12, 18));
         g.fillRoundedRectangle(bounds, 4.0f);
-        constexpr int segments = 16;
-        constexpr float gap = 2.0f;
+        constexpr int segments = 20;
+        constexpr float gap = 1.6f;
         const float segmentHeight = (bounds.getHeight() - gap * (segments - 1)) / segments;
         const int lit = juce::roundToInt(level * segments);
         for (int i = 0; i < segments; ++i)
         {
             const int fromBottom = segments - 1 - i;
-            juce::Colour colour = fromBottom >= 13 ? juce::Colour(235, 75, 65)
-                                  : fromBottom >= 10 ? juce::Colour(235, 190, 65)
-                                  : juce::Colour(35, 210, 145);
-            if (fromBottom < lit)
-                g.setColour(colour);
-            else
-                g.setColour(juce::Colour(48, 58, 67));
+            // Pioneer-inspired signal colors: green for normal, yellow for hot,
+            // and red only when the signal approaches its peak.
+            const juce::Colour colour = fromBottom >= 18 ? juce::Colour(245, 72, 65)
+                                      : fromBottom >= 15 ? juce::Colour(245, 190, 55)
+                                      : juce::Colour(35, 220, 145);
+            g.setColour(fromBottom < lit ? colour : juce::Colour(48, 58, 67));
             const float y = bounds.getY() + i * (segmentHeight + gap);
-            g.fillRoundedRectangle(bounds.getX() + 2.0f, y,
-                                   bounds.getWidth() - 4.0f, segmentHeight, 2.0f);
+            g.fillRoundedRectangle(bounds.getX() + 1.0f, y,
+                                   bounds.getWidth() - 2.0f, segmentHeight, 2.0f);
         }
     }
 
@@ -675,8 +674,8 @@ public:
         eqHighA.setBounds(295, 398, 130, 28);
         jogWheelA.setBounds(180, 432, 110, 110);
         // VU meters centered in the mixer, between channel A and channel B.
-        vuLabelA.setBounds(610, 278, 34, 20);
-        vuMeterA.setBounds(620, 300, 15, 100);
+        vuLabelA.setBounds(608, 278, 38, 20);
+        vuMeterA.setBounds(617, 300, 18, 108);
 
         loadB.setBounds(855, 155, 115, 42);
         playB.setBounds(980, 155, 95, 42);
@@ -692,8 +691,8 @@ public:
         eqMidB.setBounds(980, 398, 100, 28);
         eqHighB.setBounds(1105, 398, 130, 28);
         jogWheelB.setBounds(990, 432, 110, 110);
-        vuLabelB.setBounds(642, 278, 34, 20);
-        vuMeterB.setBounds(652, 300, 15, 100);
+        vuLabelB.setBounds(640, 278, 38, 20);
+        vuMeterB.setBounds(649, 300, 18, 108);
 
         mixerPanel.setBounds(470, 105, 340, 540);
 
