@@ -256,6 +256,75 @@ private:
     }
 };
 
+class WaveformDisplay : public juce::Component
+{
+public:
+    void setAudio(std::shared_ptr<juce::AudioBuffer<float>> audio)
+    {
+        buffer = std::move(audio);
+        repaint();
+    }
+
+    void setPlayhead(double normalizedPosition)
+    {
+        playhead = juce::jlimit(0.0, 1.0, normalizedPosition);
+        repaint();
+    }
+
+    void paint(juce::Graphics& g) override
+    {
+        auto area = getLocalBounds().toFloat();
+        g.setColour(juce::Colour(8, 13, 22));
+        g.fillRoundedRectangle(area, 6.0f);
+        g.setColour(juce::Colour(48, 61, 78));
+        g.drawRoundedRectangle(area.reduced(0.5f), 6.0f, 1.0f);
+
+        const float centreY = area.getCentreY();
+        g.setColour(juce::Colour(65, 82, 101));
+        g.drawHorizontalLine(juce::roundToInt(centreY), area.getX() + 5.0f, area.getRight() - 5.0f);
+
+        auto audio = buffer;
+        if (audio == nullptr || audio->getNumSamples() == 0)
+        {
+            g.setColour(juce::Colour(130, 145, 163));
+            g.setFont(12.0f);
+            g.drawFittedText("CARGA UNA PISTA PARA VER LA FORMA DE ONDA",
+                             getLocalBounds(), juce::Justification::centred, 1);
+        }
+        else
+        {
+            const int samples = audio->getNumSamples();
+            const int channels = audio->getNumChannels();
+            const int columns = juce::jmax(1, getWidth() - 12);
+            const float halfHeight = juce::jmax(2.0f, area.getHeight() * 0.43f);
+            for (int x = 0; x < columns; ++x)
+            {
+                const int start = static_cast<int>((static_cast<int64>(x) * samples) / columns);
+                const int end = juce::jmax(start + 1, static_cast<int>((static_cast<int64>(x + 1) * samples) / columns));
+                float peak = 0.0f;
+                for (int ch = 0; ch < channels; ++ch)
+                {
+                    const float* data = audio->getReadPointer(ch);
+                    for (int i = start; i < juce::jmin(end, samples); ++i)
+                        peak = juce::jmax(peak, std::abs(data[i]));
+                }
+                const float h = juce::jlimit(1.0f, halfHeight, peak * halfHeight * 2.8f);
+                const float px = area.getX() + 6.0f + static_cast<float>(x);
+                g.setColour(peak > 0.72f ? juce::Colour(255, 174, 78) : juce::Colour(48, 205, 220));
+                g.drawVerticalLine(juce::roundToInt(px), centreY - h, centreY + h);
+            }
+        }
+
+        const float cursorX = area.getX() + 6.0f + static_cast<float>(playhead) * (area.getWidth() - 12.0f);
+        g.setColour(juce::Colour(255, 255, 255));
+        g.drawLine(cursorX, area.getY() + 2.0f, cursorX, area.getBottom() - 2.0f, 2.0f);
+    }
+
+private:
+    std::shared_ptr<juce::AudioBuffer<float>> buffer;
+    double playhead = 0.0;
+};
+
 class VUMeter : public juce::Component
 {
 public:
@@ -387,6 +456,8 @@ public:
         }
         addAndMakeVisible(vuMeterA);
         addAndMakeVisible(vuMeterB);
+        addAndMakeVisible(waveformA);
+        addAndMakeVisible(waveformB);
         for (auto* label : { &channelLabelA, &channelLabelB, &masterLabel })
         {
             label->setJustificationType(juce::Justification::centred);
@@ -812,25 +883,27 @@ public:
         loadA.setBounds(buttonsAX, buttonY, loadW, 42);
         playA.setBounds(buttonsAX + loadW + buttonGap, buttonY, playW, 42);
         stopA.setBounds(buttonsAX + loadW + buttonGap + playW + buttonGap, buttonY, stopW, 42);
-        trackA.setBounds(margin + 20, 210, deckW - 40, 48);
-        timeA.setBounds(margin + 20, 265, deckW - 40, 24);
-        seekA.setBounds(margin + 20, 290, deckW - 40, 24);
-        cueA.setBounds(margin + 20, 330, 85, 34);
-        volumeLabelA.setBounds(margin + 115, 330, 85, 34);
-        volumeA.setBounds(margin + 200, 330, deckW - 225, 34);
-        jogWheelA.setBounds(margin + (deckW - 110) / 2, 432, 110, 110);
+        trackA.setBounds(margin + 20, 210, deckW - 40, 36);
+        waveformA.setBounds(margin + 20, 250, deckW - 40, 66);
+        timeA.setBounds(margin + 20, 319, deckW - 40, 20);
+        seekA.setBounds(margin + 20, 342, deckW - 40, 22);
+        cueA.setBounds(margin + 20, 375, 85, 30);
+        volumeLabelA.setBounds(margin + 115, 375, 85, 30);
+        volumeA.setBounds(margin + 200, 375, deckW - 225, 30);
+        jogWheelA.setBounds(margin + (deckW - 110) / 2, 440, 110, 110);
 
         const int buttonsBX = deckBX + (deckW - buttonsWidth) / 2;
         loadB.setBounds(buttonsBX, buttonY, loadW, 42);
         playB.setBounds(buttonsBX + loadW + buttonGap, buttonY, playW, 42);
         stopB.setBounds(buttonsBX + loadW + buttonGap + playW + buttonGap, buttonY, stopW, 42);
-        trackB.setBounds(deckBX + 20, 210, deckW - 40, 48);
-        timeB.setBounds(deckBX + 20, 265, deckW - 40, 24);
-        seekB.setBounds(deckBX + 20, 290, deckW - 40, 24);
-        cueB.setBounds(deckBX + 20, 330, 85, 34);
-        volumeLabelB.setBounds(deckBX + 115, 330, 85, 34);
-        volumeB.setBounds(deckBX + 200, 330, deckW - 225, 34);
-        jogWheelB.setBounds(deckBX + (deckW - 110) / 2, 432, 110, 110);
+        trackB.setBounds(deckBX + 20, 210, deckW - 40, 36);
+        waveformB.setBounds(deckBX + 20, 250, deckW - 40, 66);
+        timeB.setBounds(deckBX + 20, 319, deckW - 40, 20);
+        seekB.setBounds(deckBX + 20, 342, deckW - 40, 22);
+        cueB.setBounds(deckBX + 20, 375, 85, 30);
+        volumeLabelB.setBounds(deckBX + 115, 375, 85, 30);
+        volumeB.setBounds(deckBX + 200, 375, deckW - 225, 30);
+        jogWheelB.setBounds(deckBX + (deckW - 110) / 2, 440, 110, 110);
 
         mixerPanel.setBounds(mixerX, 105, mixerW, 540);
 
@@ -912,6 +985,7 @@ private:
     juce::Label title, mixerLabel, status, channelLabelA, channelLabelB, masterLabel, vuLabelA, vuLabelB, clipLabel;
     std::atomic<int> clipHoldTicks{ 0 };
     VUMeter vuMeterA, vuMeterB;
+    WaveformDisplay waveformA, waveformB;
     std::atomic<float> meterLevelA{ 0.0f }, meterLevelB{ 0.0f };
     juce::Label eqLabelLowA, eqLabelMidA, eqLabelHighA, eqLabelLowB, eqLabelMidB, eqLabelHighB;
     juce::Label filterLabelA, filterLabelB, channelLabelGainA, channelLabelGainB;
@@ -1234,6 +1308,10 @@ private:
     {
         vuMeterA.setLevel(meterLevelA.load());
         vuMeterB.setLevel(meterLevelB.load());
+        const double lengthA = transportA.getLengthInSeconds();
+        const double lengthB = transportB.getLengthInSeconds();
+        waveformA.setPlayhead(lengthA > 0.0 ? transportA.getCurrentPosition() / lengthA : 0.0);
+        waveformB.setPlayhead(lengthB > 0.0 ? transportB.getCurrentPosition() / lengthB : 0.0);
 
         // Execute controller requests safely on JUCE's message thread.
         if (midiPlayARequest.exchange(false))
@@ -1521,6 +1599,8 @@ private:
             readerA = std::move(newSource);
             transportA.setSource(readerA.get(), 0, nullptr, sourceSampleRate);
             trackA.setText(file.getFileName(), juce::dontSendNotification);
+            waveformA.setAudio(decodedAudio);
+            waveformA.setPlayhead(0.0);
             playA.setButtonText("PLAY");
         }
         else
@@ -1534,6 +1614,8 @@ private:
             readerB = std::move(newSource);
             transportB.setSource(readerB.get(), 0, nullptr, sourceSampleRate);
             trackB.setText(file.getFileName(), juce::dontSendNotification);
+            waveformB.setAudio(decodedAudio);
+            waveformB.setPlayhead(0.0);
             playB.setButtonText("PLAY");
         }
 
