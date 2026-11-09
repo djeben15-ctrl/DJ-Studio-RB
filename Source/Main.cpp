@@ -711,6 +711,25 @@ public:
                 midiCueBRequest.store(true);
         }
 
+        // Pioneer DDJ-RB jog wheels send relative encoder ticks:
+        // Deck A status 176, Deck B status 177; 65 = forward, 63 = backward.
+        // Deck A reverse was observed on CC 36; other jog ticks use CC 34.
+        if (message.isController() && message.getRawDataSize() >= 3)
+        {
+            const int statusByte = message.getRawData()[0];
+            const int controller = message.getControllerNumber();
+            const int value = message.getControllerValue();
+            const bool deckA = (statusByte == 176);
+            const bool deckB = (statusByte == 177);
+            if ((deckA || deckB) && (controller == 34 || (deckA && controller == 36)))
+            {
+                if (value == 65)
+                    (deckA ? midiJogDeltaA : midiJogDeltaB).fetch_add(1);
+                else if (value == 63)
+                    (deckA ? midiJogDeltaA : midiJogDeltaB).fetch_sub(1);
+            }
+        }
+
         // Pioneer DDJ-RB: FILTER B knob sends CC 56 on MIDI channel 7
         // (status 182). Re-purpose it as the Deck B volume slider control.
         if (message.isController() && message.getRawDataSize() >= 3
@@ -906,6 +925,7 @@ private:
     std::atomic<bool> midiPlayARequest{ false };
     std::atomic<bool> midiPlayBRequest{ false };
     std::atomic<bool> midiCueARequest{ false }, midiCueBRequest{ false };
+    std::atomic<int> midiJogDeltaA{ 0 }, midiJogDeltaB{ 0 };
     std::atomic<float> midiDeckBLevel{ 1.0f };
     std::atomic<bool> midiDeckBLevelRequest{ false };
     juce::TextButton headphoneCueAButton{ "CUE A" }, headphoneCueBButton{ "CUE B" };
@@ -1224,6 +1244,12 @@ private:
             cueDeck(0);
         if (midiCueBRequest.exchange(false))
             cueDeck(1);
+        const int jogDeltaA = midiJogDeltaA.exchange(0);
+        const int jogDeltaB = midiJogDeltaB.exchange(0);
+        if (jogDeltaA != 0)
+            nudgeDeck(0, jogDeltaA * 0.025);
+        if (jogDeltaB != 0)
+            nudgeDeck(1, jogDeltaB * 0.025);
         if (midiDeckBLevelRequest.exchange(false))
             volumeB.setValue(midiDeckBLevel.load(), juce::dontSendNotification);
         const int midiCount = midiMessageCount.load();
