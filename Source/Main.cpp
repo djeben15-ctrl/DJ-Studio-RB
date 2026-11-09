@@ -302,7 +302,7 @@ public:
         formatManager.registerBasicFormats();
 
         setSize(1280, 720);
-        setAudioChannels(0, 2);
+        setAudioChannels(0, 4);
 
         title.setText("DJ STUDIO RB", juce::dontSendNotification);
         title.setFont(juce::Font(30.0f, juce::Font::bold));
