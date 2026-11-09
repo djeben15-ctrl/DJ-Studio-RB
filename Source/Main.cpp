@@ -706,6 +706,9 @@ public:
         midiDeviceBox.setSelectedId(1, juce::dontSendNotification);
         midiLabel.setText("Controladores MIDI detectados: " + juce::String(devices.size()),
                           juce::dontSendNotification);
+        // setSelectedId(..., dontSendNotification) does not invoke onChange.
+        // Connect explicitly so the detected controller is actually opened.
+        connectMidiInput();
     }
 
     void connectMidiInput()
