@@ -701,6 +701,16 @@ public:
                 midiPlayBRequest.store(true);
         }
 
+        // Pioneer DDJ-RB CUE buttons: Note 12, channel 1 = Deck A,
+        // channel 2 = Deck B. Trigger only on press, not release.
+        if (message.isNoteOn() && message.getNoteNumber() == 12)
+        {
+            if (message.getChannel() == 1)
+                midiCueARequest.store(true);
+            else if (message.getChannel() == 2)
+                midiCueBRequest.store(true);
+        }
+
         // Pioneer DDJ-RB: FILTER B knob sends CC 56 on MIDI channel 7
         // (status 182). Re-purpose it as the Deck B volume slider control.
         if (message.isController() && message.getRawDataSize() >= 3
@@ -895,6 +905,7 @@ private:
     std::atomic<int> midiMessageCount{ 0 }, midiLastStatus{ 0 }, midiLastData1{ 0 }, midiLastData2{ 0 };
     std::atomic<bool> midiPlayARequest{ false };
     std::atomic<bool> midiPlayBRequest{ false };
+    std::atomic<bool> midiCueARequest{ false }, midiCueBRequest{ false };
     std::atomic<float> midiDeckBLevel{ 1.0f };
     std::atomic<bool> midiDeckBLevelRequest{ false };
     juce::TextButton headphoneCueAButton{ "CUE A" }, headphoneCueBButton{ "CUE B" };
@@ -1209,6 +1220,10 @@ private:
             toggleDeckPlayback(0);
         if (midiPlayBRequest.exchange(false))
             toggleDeckPlayback(1);
+        if (midiCueARequest.exchange(false))
+            cueDeck(0);
+        if (midiCueBRequest.exchange(false))
+            cueDeck(1);
         if (midiDeckBLevelRequest.exchange(false))
             volumeB.setValue(midiDeckBLevel.load(), juce::dontSendNotification);
         const int midiCount = midiMessageCount.load();
