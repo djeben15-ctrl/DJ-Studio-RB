@@ -1180,7 +1180,7 @@ private:
         if (midiCount != previousMidiCount)
         {
             previousMidiCount = midiCount;
-            status.setText("MIDI recibido: " + juce::String(midiLastStatus.load(), 16).toUpperCase()
+            status.setText("MIDI recibido: " + juce::String(midiLastStatus.load())
                 + " / " + juce::String(midiLastData1.load()) + " / "
                 + juce::String(midiLastData2.load()) + "  (" + juce::String(midiCount) + ")",
                 juce::dontSendNotification);
