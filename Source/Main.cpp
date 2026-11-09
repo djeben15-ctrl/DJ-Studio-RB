@@ -401,6 +401,10 @@ public:
 
         setupDeckControls();
 
+        audioSettingsButton.setButtonText("AUDIO");
+        audioSettingsButton.onClick = [this] { showAudioSettings(); };
+        addAndMakeVisible(audioSettingsButton);
+
         libraryButton.setButtonText("BIBLIOTECA");
         libraryButton.onClick = [this]
         {
@@ -498,7 +502,8 @@ public:
         if (info.buffer == nullptr)
             return;
 
-        const int channels = juce::jmin(2, info.buffer->getNumChannels());
+        const int outputChannels = info.buffer->getNumChannels();
+        const int channels = juce::jmin(2, outputChannels);
         if (info.numSamples > scratchA.getNumSamples())
         {
             scratchA.setSize(2, info.numSamples, false, false, true);
@@ -583,12 +588,28 @@ public:
         {
             for (int channel = 0; channel < channels; ++channel)
             {
-                const float sampleA = scratchA.getSample(channel, sample) * gainA * jogGainA;
-                const float sampleB = scratchB.getSample(channel, sample) * gainB * jogGainB;
+                const float deckA = scratchA.getSample(channel, sample);
+                const float deckB = scratchB.getSample(channel, sample);
+                const float sampleA = deckA * gainA * jogGainA;
+                const float sampleB = deckB * gainB * jogGainB;
                 const float mixedSample = sampleA + sampleB;
                 if (std::abs(mixedSample) >= 0.999f)
                     clipHoldTicks.store(60); // Hold the CLIP warning for about one second.
                 info.buffer->setSample(channel, info.startSample + sample, mixedSample);
+
+                // DDJ-RB USB audio: outputs 1/2 feed MASTER RCA; outputs 3/4 feed headphones.
+                // Headphone CUE is independent of the crossfader and master output level.
+                if (outputChannels >= 4)
+                {
+                    const float cueA = headphoneCueA.load() ? deckA
+                        * static_cast<float>(volumeA.getValue())
+                        * static_cast<float>(channelFaderA.getValue()) : 0.0f;
+                    const float cueB = headphoneCueB.load() ? deckB
+                        * static_cast<float>(volumeB.getValue())
+                        * static_cast<float>(channelFaderB.getValue()) : 0.0f;
+                    info.buffer->setSample(channel + 2, info.startSample + sample,
+                                           (cueA + cueB) * 0.8f);
+                }
                 peakA = juce::jmax(peakA, std::abs(sampleA));
                 peakB = juce::jmax(peakB, std::abs(sampleB));
             }
@@ -664,6 +685,7 @@ public:
 
         title.setBounds(0, 18, w, 55);
         libraryButton.setBounds(w - margin - 140, 28, 140, 34);
+        audioSettingsButton.setBounds(w - margin - 220, 28, 70, 34);
         libraryPanel.setBounds(getLocalBounds());
 
         // Equal-width decks, mirrored around the centered mixer.
@@ -732,6 +754,8 @@ public:
         vuMeterA.setBounds(vuX, 300, 18, 108);
         vuLabelB.setBounds(vuX + 22, 278, 22, 20);
         vuMeterB.setBounds(vuX + 22, 300, 18, 108);
+        headphoneCueAButton.setBounds(mixerX + (mixerW - 126) / 2, 416, 60, 26);
+        headphoneCueBButton.setBounds(mixerX + (mixerW - 126) / 2 + 66, 416, 60, 26);
 
         volumeLabelA.setBounds(mixerX + 8, 450, 70, 18);
         volumeA.setBounds(mixerX + 12, 468, 58, 62);
@@ -782,7 +806,9 @@ private:
     juce::Label filterLabelA, filterLabelB, channelLabelGainA, channelLabelGainB;
     juce::GroupComponent mixerPanel;
     juce::Slider channelFaderA, channelFaderB, masterFader, filterA, filterB;
-    juce::TextButton libraryButton;
+    juce::TextButton libraryButton, audioSettingsButton;
+    juce::TextButton headphoneCueAButton{ "CUE A" }, headphoneCueBButton{ "CUE B" };
+    std::atomic<bool> headphoneCueA{ false }, headphoneCueB{ false };
     MusicLibraryPanel libraryPanel;
     juce::GroupComponent deckA, deckB;
     juce::TextButton loadA{"CARGAR"};
@@ -966,6 +992,29 @@ private:
 
         cueA.onClick = [this] { cueDeck(0); };
         cueB.onClick = [this] { cueDeck(1); };
+
+        for (auto* button : { &headphoneCueAButton, &headphoneCueBButton })
+        {
+            button->setClickingTogglesState(true);
+            button->setColour(juce::TextButton::buttonColourId, juce::Colour(45, 55, 70));
+            button->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+            button->setColour(juce::TextButton::textColourOnId, juce::Colour(35, 220, 190));
+            addAndMakeVisible(button);
+        }
+        headphoneCueAButton.onClick = [this]
+        {
+            headphoneCueA.store(headphoneCueAButton.getToggleState());
+            status.setText(headphoneCueA.load()
+                ? "Preescucha de DECK A activada en audífonos."
+                : "Preescucha de DECK A desactivada.", juce::dontSendNotification);
+        };
+        headphoneCueBButton.onClick = [this]
+        {
+            headphoneCueB.store(headphoneCueBButton.getToggleState());
+            status.setText(headphoneCueB.load()
+                ? "Preescucha de DECK B activada en audífonos."
+                : "Preescucha de DECK B desactivada.", juce::dontSendNotification);
+        };
 
         jogWheelA.onScratchStart = [this]
         {
@@ -1161,6 +1210,21 @@ private:
         playButton.setButtonText("PLAY");
         status.setText(deckNumber == 0 ? "DECK A: posición inicial." :
                                          "DECK B: posición inicial.",
+                       juce::dontSendNotification);
+    }
+
+    void showAudioSettings()
+    {
+        juce::DialogWindow::LaunchOptions options;
+        options.content.setOwned(new juce::AudioDeviceSelectorComponent(
+            deviceManager, 0, 0, 2, 4, false, false, true, false));
+        options.dialogTitle = "Configuración de audio - DJ Studio RB";
+        options.dialogBackgroundColour = juce::Colour(24, 29, 38);
+        options.escapeKeyTriggersCloseButton = true;
+        options.useNativeTitleBar = true;
+        options.resizable = false;
+        options.launchAsync();
+        status.setText("Selecciona Pioneer DDJ-RB y activa 4 canales de salida: 1/2 MASTER RCA, 3/4 audífonos.",
                        juce::dontSendNotification);
     }
 
