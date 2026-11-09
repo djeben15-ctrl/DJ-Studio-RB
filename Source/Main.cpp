@@ -695,6 +695,16 @@ public:
         // transport controls directly from the MIDI callback thread.
         if (message.isNoteOn() && message.getNoteNumber() == 11)
             midiPlayARequest.store(true);
+
+        // Pioneer DDJ-RB: FILTER B knob sends CC 56 on MIDI channel 7
+        // (status 182). Re-purpose it as the Deck B channel level control.
+        if (message.isController() && message.getRawDataSize() >= 3
+            && message.getRawData()[0] == 182
+            && message.getControllerNumber() == 56)
+        {
+            midiDeckBLevel.store(static_cast<float>(message.getControllerValue()) / 127.0f);
+            midiDeckBLevelRequest.store(true);
+        }
     }
 
     void refreshMidiDevices()
@@ -879,6 +889,8 @@ private:
     std::unique_ptr<juce::MidiInput> midiInput;
     std::atomic<int> midiMessageCount{ 0 }, midiLastStatus{ 0 }, midiLastData1{ 0 }, midiLastData2{ 0 };
     std::atomic<bool> midiPlayARequest{ false };
+    std::atomic<float> midiDeckBLevel{ 1.0f };
+    std::atomic<bool> midiDeckBLevelRequest{ false };
     juce::TextButton headphoneCueAButton{ "CUE A" }, headphoneCueBButton{ "CUE B" };
     std::atomic<bool> headphoneCueA{ false }, headphoneCueB{ false };
     MusicLibraryPanel libraryPanel;
@@ -1189,6 +1201,8 @@ private:
         // Execute controller requests safely on JUCE's message thread.
         if (midiPlayARequest.exchange(false))
             startDeck(0);
+        if (midiDeckBLevelRequest.exchange(false))
+            channelFaderB.setValue(midiDeckBLevel.load(), juce::dontSendNotification);
         const int midiCount = midiMessageCount.load();
         static int previousMidiCount = 0;
         if (midiCount != previousMidiCount)
