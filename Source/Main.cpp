@@ -694,7 +694,12 @@ public:
         // Queue the action for the message thread; never touch UI/audio
         // transport controls directly from the MIDI callback thread.
         if (message.isNoteOn() && message.getNoteNumber() == 11)
-            midiPlayARequest.store(true);
+        {
+            if (message.getChannel() == 1)
+                midiPlayARequest.store(true);
+            else if (message.getChannel() == 2)
+                midiPlayBRequest.store(true);
+        }
 
         // Pioneer DDJ-RB: FILTER B knob sends CC 56 on MIDI channel 7
         // (status 182). Re-purpose it as the Deck B volume slider control.
@@ -889,6 +894,7 @@ private:
     std::unique_ptr<juce::MidiInput> midiInput;
     std::atomic<int> midiMessageCount{ 0 }, midiLastStatus{ 0 }, midiLastData1{ 0 }, midiLastData2{ 0 };
     std::atomic<bool> midiPlayARequest{ false };
+    std::atomic<bool> midiPlayBRequest{ false };
     std::atomic<float> midiDeckBLevel{ 1.0f };
     std::atomic<bool> midiDeckBLevelRequest{ false };
     juce::TextButton headphoneCueAButton{ "CUE A" }, headphoneCueBButton{ "CUE B" };
@@ -1201,6 +1207,8 @@ private:
         // Execute controller requests safely on JUCE's message thread.
         if (midiPlayARequest.exchange(false))
             startDeck(0);
+        if (midiPlayBRequest.exchange(false))
+            toggleDeckPlayback(1);
         if (midiDeckBLevelRequest.exchange(false))
             volumeB.setValue(midiDeckBLevel.load(), juce::dontSendNotification);
         const int midiCount = midiMessageCount.load();
@@ -1372,6 +1380,33 @@ private:
             ? "DECK A: orden de reproducción enviada al motor de audio."
             : "DECK B: orden de reproducción enviada al motor de audio.",
             juce::dontSendNotification);
+    }
+
+    void toggleDeckPlayback(int deckNumber)
+    {
+        auto& transport = (deckNumber == 0 ? transportA : transportB);
+        auto& playButton = (deckNumber == 0 ? playA : playB);
+        auto* reader = (deckNumber == 0 ? readerA.get() : readerB.get());
+
+        if (reader == nullptr)
+        {
+            status.setText(deckNumber == 0
+                ? "DECK A: primero carga una canción."
+                : "DECK B: primero carga una canción.", juce::dontSendNotification);
+            return;
+        }
+
+        if (transport.isPlaying())
+        {
+            transport.stop();
+            playButton.setButtonText("PLAY");
+            status.setText(deckNumber == 0 ? "DECK A en pausa." : "DECK B en pausa.",
+                           juce::dontSendNotification);
+        }
+        else
+        {
+            startDeck(deckNumber);
+        }
     }
 
     void stopDeck(int deckNumber)
