@@ -689,6 +689,12 @@ public:
         midiLastStatus.store(message.getRawDataSize() > 0 ? message.getRawData()[0] : 0);
         midiLastData1.store(message.getRawDataSize() > 1 ? message.getRawData()[1] : 0);
         midiLastData2.store(message.getRawDataSize() > 2 ? message.getRawData()[2] : 0);
+
+        // Pioneer DDJ-RB: Deck A PLAY sends Note 11 on channel 1.
+        // Queue the action for the message thread; never touch UI/audio
+        // transport controls directly from the MIDI callback thread.
+        if (message.isNoteOn() && message.getNoteNumber() == 11)
+            midiPlayARequest.store(true);
     }
 
     void refreshMidiDevices()
@@ -872,6 +878,7 @@ private:
     juce::Label midiLabel;
     std::unique_ptr<juce::MidiInput> midiInput;
     std::atomic<int> midiMessageCount{ 0 }, midiLastStatus{ 0 }, midiLastData1{ 0 }, midiLastData2{ 0 };
+    std::atomic<bool> midiPlayARequest{ false };
     juce::TextButton headphoneCueAButton{ "CUE A" }, headphoneCueBButton{ "CUE B" };
     std::atomic<bool> headphoneCueA{ false }, headphoneCueB{ false };
     MusicLibraryPanel libraryPanel;
@@ -1178,6 +1185,10 @@ private:
     {
         vuMeterA.setLevel(meterLevelA.load());
         vuMeterB.setLevel(meterLevelB.load());
+
+        // Execute controller requests safely on JUCE's message thread.
+        if (midiPlayARequest.exchange(false))
+            startDeck(0);
         const int midiCount = midiMessageCount.load();
         static int previousMidiCount = 0;
         if (midiCount != previousMidiCount)
