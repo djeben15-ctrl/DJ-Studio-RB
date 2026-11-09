@@ -697,7 +697,7 @@ public:
             midiPlayARequest.store(true);
 
         // Pioneer DDJ-RB: FILTER B knob sends CC 56 on MIDI channel 7
-        // (status 182). Re-purpose it as the Deck B channel level control.
+        // (status 182). Re-purpose it as the Deck B volume slider control.
         if (message.isController() && message.getRawDataSize() >= 3
             && message.getRawData()[0] == 182
             && message.getControllerNumber() == 56)
@@ -1202,7 +1202,7 @@ private:
         if (midiPlayARequest.exchange(false))
             startDeck(0);
         if (midiDeckBLevelRequest.exchange(false))
-            channelFaderB.setValue(midiDeckBLevel.load(), juce::dontSendNotification);
+            volumeB.setValue(midiDeckBLevel.load(), juce::dontSendNotification);
         const int midiCount = midiMessageCount.load();
         static int previousMidiCount = 0;
         if (midiCount != previousMidiCount)
