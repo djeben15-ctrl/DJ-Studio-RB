@@ -151,6 +151,49 @@ public:
         addAndMakeVisible(info);
     }
 
+    void handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message) override
+    {
+        midiMessageCount.fetch_add(1);
+        midiLastStatus.store(message.getRawDataSize() > 0 ? message.getRawData()[0] : 0);
+        midiLastData1.store(message.getRawDataSize() > 1 ? message.getRawData()[1] : 0);
+        midiLastData2.store(message.getRawDataSize() > 2 ? message.getRawData()[2] : 0);
+    }
+
+    void refreshMidiDevices()
+    {
+        midiInput.reset();
+        midiDeviceBox.clear(juce::dontSendNotification);
+        const auto devices = juce::MidiInput::getAvailableDevices();
+        for (int i = 0; i < devices.size(); ++i)
+            midiDeviceBox.addItem(devices[i].name, i + 1);
+        if (devices.isEmpty())
+        {
+            midiLabel.setText("No se detectan dispositivos MIDI", juce::dontSendNotification);
+            return;
+        }
+        midiDeviceBox.setSelectedId(1, juce::dontSendNotification);
+        midiLabel.setText("Controladores MIDI detectados: " + juce::String(devices.size()),
+                          juce::dontSendNotification);
+    }
+
+    void connectMidiInput()
+    {
+        midiInput.reset();
+        const auto devices = juce::MidiInput::getAvailableDevices();
+        const int index = midiDeviceBox.getSelectedId() - 1;
+        if (index < 0 || index >= devices.size())
+            return;
+        midiInput = juce::MidiInput::createDevice(devices[index].identifier, this);
+        if (midiInput != nullptr)
+        {
+            midiInput->start();
+            midiLabel.setText("MIDI conectado: " + devices[index].name, juce::dontSendNotification);
+            status.setText("Mueve un control físico para comprobar la señal MIDI.", juce::dontSendNotification);
+        }
+        else
+            midiLabel.setText("No se pudo abrir el dispositivo MIDI.", juce::dontSendNotification);
+    }
+
     void resized() override
     {
         auto area = getLocalBounds().reduced(28);
@@ -294,7 +337,7 @@ private:
     float level = 0.0f;
 };
 
-class DJStudioRB : public juce::AudioAppComponent, private juce::Timer, public juce::FileDragAndDropTarget
+class DJStudioRB : public juce::AudioAppComponent, private juce::Timer, public juce::FileDragAndDropTarget, public juce::MidiInputCallback
 {
 public:
     DJStudioRB()
@@ -405,6 +448,17 @@ public:
         audioSettingsButton.onClick = [this] { showAudioSettings(); };
         addAndMakeVisible(audioSettingsButton);
 
+        midiLabel.setText("MIDI DDJ-RB", juce::dontSendNotification);
+        midiLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+        addAndMakeVisible(midiLabel);
+        midiDeviceBox.setTextWhenNothingSelected("Seleccionar controlador MIDI");
+        midiDeviceBox.onChange = [this] { connectMidiInput(); };
+        addAndMakeVisible(midiDeviceBox);
+        refreshMidiButton.setButtonText("BUSCAR MIDI");
+        refreshMidiButton.onClick = [this] { refreshMidiDevices(); };
+        addAndMakeVisible(refreshMidiButton);
+        refreshMidiDevices();
+
         libraryButton.setButtonText("BIBLIOTECA");
         libraryButton.onClick = [this]
         {
@@ -426,6 +480,7 @@ public:
 
     ~DJStudioRB() override
     {
+        midiInput.reset();
         shutdownAudio();
         transportA.setSource(nullptr);
         transportB.setSource(nullptr);
@@ -686,6 +741,9 @@ public:
         title.setBounds(0, 18, w, 55);
         libraryButton.setBounds(w - margin - 140, 28, 140, 34);
         audioSettingsButton.setBounds(w - margin - 220, 28, 70, 34);
+        midiLabel.setBounds(margin + 10, 62, 120, 22);
+        midiDeviceBox.setBounds(margin + 132, 62, 230, 24);
+        refreshMidiButton.setBounds(margin + 370, 62, 110, 24);
         libraryPanel.setBounds(getLocalBounds());
 
         // Equal-width decks, mirrored around the centered mixer.
@@ -806,7 +864,11 @@ private:
     juce::Label filterLabelA, filterLabelB, channelLabelGainA, channelLabelGainB;
     juce::GroupComponent mixerPanel;
     juce::Slider channelFaderA, channelFaderB, masterFader, filterA, filterB;
-    juce::TextButton libraryButton, audioSettingsButton;
+    juce::TextButton libraryButton, audioSettingsButton, refreshMidiButton;
+    juce::ComboBox midiDeviceBox;
+    juce::Label midiLabel;
+    std::unique_ptr<juce::MidiInput> midiInput;
+    std::atomic<int> midiMessageCount{ 0 }, midiLastStatus{ 0 }, midiLastData1{ 0 }, midiLastData2{ 0 };
     juce::TextButton headphoneCueAButton{ "CUE A" }, headphoneCueBButton{ "CUE B" };
     std::atomic<bool> headphoneCueA{ false }, headphoneCueB{ false };
     MusicLibraryPanel libraryPanel;
@@ -1113,6 +1175,16 @@ private:
     {
         vuMeterA.setLevel(meterLevelA.load());
         vuMeterB.setLevel(meterLevelB.load());
+        const int midiCount = midiMessageCount.load();
+        static int previousMidiCount = 0;
+        if (midiCount != previousMidiCount)
+        {
+            previousMidiCount = midiCount;
+            status.setText("MIDI recibido: " + juce::String(midiLastStatus.load(), 16).toUpperCase()
+                + " / " + juce::String(midiLastData1.load()) + " / "
+                + juce::String(midiLastData2.load()) + "  (" + juce::String(midiCount) + ")",
+                juce::dontSendNotification);
+        }
         int clipTicks = clipHoldTicks.load();
         if (clipTicks > 0)
         {
