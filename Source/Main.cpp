@@ -153,107 +153,25 @@ public:
 
     void resized() override
     {
-        // Responsive, symmetric layout: equal decks with a centered mixer.
-        const int w = getWidth();
-        const int margin = 18;
-        const int gap = 14;
-        const int mixerW = juce::jlimit(286, 320, w / 4);
-        const int deckW = juce::jmax(360, (w - (2 * margin) - mixerW - (2 * gap)) / 2);
-        const int deckY = 100;
-        const int deckH = 470;
-        const int mixerX = margin + deckW + gap;
-        const int deckBX = mixerX + mixerW + gap;
-
-        title.setBounds(0, 18, w, 55);
-        libraryButton.setBounds(w - margin - 140, 28, 140, 34);
-        libraryPanel.setBounds(getLocalBounds());
-
-        deckA.setBounds(margin, deckY, deckW, deckH);
-        deckB.setBounds(deckBX, deckY, deckW, deckH);
-
-        // Deck A controls.
-        const int buttonY = 155;
-        const int buttonX = margin + 20;
-        const int buttonGap = 10;
-        const int loadW = 112, playW = 92, stopW = 92;
-        const int buttonsWidth = loadW + playW + stopW + 2 * buttonGap;
-        const int buttonsX = margin + (deckW - buttonsWidth) / 2;
-        loadA.setBounds(buttonsX, buttonY, loadW, 42);
-        playA.setBounds(buttonsX + loadW + buttonGap, buttonY, playW, 42);
-        stopA.setBounds(buttonsX + loadW + buttonGap + playW + buttonGap, buttonY, stopW, 42);
-        trackA.setBounds(margin + 20, 210, deckW - 40, 48);
-        timeA.setBounds(margin + 20, 265, deckW - 40, 24);
-        seekA.setBounds(margin + 20, 290, deckW - 40, 24);
-        cueA.setBounds(margin + 20, 330, 85, 34);
-        volumeLabelA.setBounds(margin + 115, 330, 85, 34);
-        volumeA.setBounds(margin + 200, 330, juce::jmax(100, deckW - 225), 34);
-        jogWheelA.setBounds(margin + (deckW - 110) / 2, 432, 110, 110);
-
-        // Deck B mirrors Deck A exactly.
-        const int bX = deckBX;
-        const int buttonsBX = bX + (deckW - buttonsWidth) / 2;
-        loadB.setBounds(buttonsBX, buttonY, loadW, 42);
-        playB.setBounds(buttonsBX + loadW + buttonGap, buttonY, playW, 42);
-        stopB.setBounds(buttonsBX + loadW + buttonGap + playW + buttonGap, buttonY, stopW, 42);
-        trackB.setBounds(bX + 20, 210, deckW - 40, 48);
-        timeB.setBounds(bX + 20, 265, deckW - 40, 24);
-        seekB.setBounds(bX + 20, 290, deckW - 40, 24);
-        cueB.setBounds(bX + 20, 330, 85, 34);
-        volumeLabelB.setBounds(bX + 115, 330, 85, 34);
-        volumeB.setBounds(bX + 200, 330, juce::jmax(100, deckW - 225), 34);
-        jogWheelB.setBounds(bX + (deckW - 110) / 2, 432, 110, 110);
-
-        // Mixer stays centered between equal-width decks.
-        mixerPanel.setBounds(mixerX, 105, mixerW, 540);
-        const int colW = 90;
-        const int colAX = mixerX + 12;
-        const int colBX = mixerX + mixerW - 12 - colW;
-        channelLabelA.setBounds(colAX, 132, colW, 18);
-        channelLabelB.setBounds(colBX, 132, colW, 18);
-        channelLabelGainA.setBounds(colAX, 151, colW, 18);
-        channelFaderA.setBounds(colAX + 5, 168, colW - 10, 58);
-        channelLabelGainB.setBounds(colBX, 151, colW, 18);
-        channelFaderB.setBounds(colBX + 5, 168, colW - 10, 58);
-
-        eqLabelLowA.setBounds(colAX, 226, colW, 18);
-        eqLowA.setBounds(colAX + 5, 242, colW - 10, 58);
-        eqLabelMidA.setBounds(colAX, 300, colW, 18);
-        eqMidA.setBounds(colAX + 5, 316, colW - 10, 58);
-        eqLabelHighA.setBounds(colAX, 374, colW, 18);
-        eqHighA.setBounds(colAX + 5, 390, colW - 10, 58);
-
-        eqLabelLowB.setBounds(colBX, 226, colW, 18);
-        eqLowB.setBounds(colBX + 5, 242, colW - 10, 58);
-        eqLabelMidB.setBounds(colBX, 300, colW, 18);
-        eqMidB.setBounds(colBX + 5, 316, colW - 10, 58);
-        eqLabelHighB.setBounds(colBX, 374, colW, 18);
-        eqHighB.setBounds(colBX + 5, 390, colW - 10, 58);
-
-        // Stereo VU meters are centered in the gap between channel strips.
-        const int vuGapX = mixerX + (mixerW - 44) / 2;
-        vuLabelA.setBounds(vuGapX - 2, 278, 24, 20);
-        vuMeterA.setBounds(vuGapX, 300, 18, 108);
-        vuLabelB.setBounds(vuGapX + 22, 278, 24, 20);
-        vuMeterB.setBounds(vuGapX + 22, 300, 18, 108);
-
-        // Channel level faders, filters and master controls.
-        volumeLabelA.setBounds(mixerX + 8, 450, 70, 18);
-        volumeA.setBounds(mixerX + 12, 468, 58, 62);
-        volumeLabelB.setBounds(mixerX + mixerW - 78, 450, 70, 18);
-        volumeB.setBounds(mixerX + mixerW - 70, 468, 58, 62);
-
-        filterLabelA.setBounds(mixerX + 82, 450, 72, 18);
-        filterA.setBounds(mixerX + 82, 468, 72, 54);
-        filterLabelB.setBounds(mixerX + mixerW - 154, 450, 72, 18);
-        filterB.setBounds(mixerX + mixerW - 154, 468, 72, 54);
-
-        masterLabel.setBounds(mixerX + (mixerW - 80) / 2, 526, 80, 18);
-        masterFader.setBounds(mixerX + (mixerW - 80) / 2, 542, 80, 42);
-        clipLabel.setBounds(mixerX + mixerW - 66, 542, 55, 26);
-        mixerLabel.setBounds(mixerX + 15, 584, mixerW - 30, 18);
-        crossfader.setBounds(mixerX + 20, 600, mixerW - 40, 24);
-
-        status.setBounds(margin, 650, w - 2 * margin, 25);
+        auto area = getLocalBounds().reduced(28);
+        heading.setBounds(area.removeFromTop(45));
+        area.removeFromTop(12);
+        auto top = area.removeFromTop(42);
+        chooseFolder.setBounds(top.removeFromLeft(245));
+        top.removeFromLeft(18);
+        searchLabel.setBounds(top.removeFromLeft(75));
+        search.setBounds(top);
+        area.removeFromTop(12);
+        info.setBounds(area.removeFromBottom(30));
+        area.removeFromBottom(8);
+        auto buttons = area.removeFromBottom(42);
+        loadA.setBounds(buttons.removeFromLeft(buttons.getWidth() / 2 - 8));
+        buttons.removeFromLeft(16);
+        loadB.setBounds(buttons.removeFromLeft(buttons.getWidth() - 190));
+        buttons.removeFromLeft(10);
+        close.setBounds(buttons);
+        area.removeFromBottom(8);
+        tracks.setBounds(area);
     }
 private:
     juce::Label heading, searchLabel, info;
