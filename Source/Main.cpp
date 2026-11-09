@@ -151,49 +151,6 @@ public:
         addAndMakeVisible(info);
     }
 
-    void handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message) override
-    {
-        midiMessageCount.fetch_add(1);
-        midiLastStatus.store(message.getRawDataSize() > 0 ? message.getRawData()[0] : 0);
-        midiLastData1.store(message.getRawDataSize() > 1 ? message.getRawData()[1] : 0);
-        midiLastData2.store(message.getRawDataSize() > 2 ? message.getRawData()[2] : 0);
-    }
-
-    void refreshMidiDevices()
-    {
-        midiInput.reset();
-        midiDeviceBox.clear(juce::dontSendNotification);
-        const auto devices = juce::MidiInput::getAvailableDevices();
-        for (int i = 0; i < devices.size(); ++i)
-            midiDeviceBox.addItem(devices[i].name, i + 1);
-        if (devices.isEmpty())
-        {
-            midiLabel.setText("No se detectan dispositivos MIDI", juce::dontSendNotification);
-            return;
-        }
-        midiDeviceBox.setSelectedId(1, juce::dontSendNotification);
-        midiLabel.setText("Controladores MIDI detectados: " + juce::String(devices.size()),
-                          juce::dontSendNotification);
-    }
-
-    void connectMidiInput()
-    {
-        midiInput.reset();
-        const auto devices = juce::MidiInput::getAvailableDevices();
-        const int index = midiDeviceBox.getSelectedId() - 1;
-        if (index < 0 || index >= devices.size())
-            return;
-        midiInput = juce::MidiInput::createDevice(devices[index].identifier, this);
-        if (midiInput != nullptr)
-        {
-            midiInput->start();
-            midiLabel.setText("MIDI conectado: " + devices[index].name, juce::dontSendNotification);
-            status.setText("Mueve un control físico para comprobar la señal MIDI.", juce::dontSendNotification);
-        }
-        else
-            midiLabel.setText("No se pudo abrir el dispositivo MIDI.", juce::dontSendNotification);
-    }
-
     void resized() override
     {
         auto area = getLocalBounds().reduced(28);
@@ -724,6 +681,49 @@ public:
         g.fillAll(juce::Colour(18, 20, 27));
         g.setColour(juce::Colour(35, 39, 49));
         g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(15), 15.0f);
+    }
+
+    void handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message) override
+    {
+        midiMessageCount.fetch_add(1);
+        midiLastStatus.store(message.getRawDataSize() > 0 ? message.getRawData()[0] : 0);
+        midiLastData1.store(message.getRawDataSize() > 1 ? message.getRawData()[1] : 0);
+        midiLastData2.store(message.getRawDataSize() > 2 ? message.getRawData()[2] : 0);
+    }
+
+    void refreshMidiDevices()
+    {
+        midiInput.reset();
+        midiDeviceBox.clear(juce::dontSendNotification);
+        const auto devices = juce::MidiInput::getAvailableDevices();
+        for (int i = 0; i < devices.size(); ++i)
+            midiDeviceBox.addItem(devices[i].name, i + 1);
+        if (devices.isEmpty())
+        {
+            midiLabel.setText("No se detectan dispositivos MIDI", juce::dontSendNotification);
+            return;
+        }
+        midiDeviceBox.setSelectedId(1, juce::dontSendNotification);
+        midiLabel.setText("Controladores MIDI detectados: " + juce::String(devices.size()),
+                          juce::dontSendNotification);
+    }
+
+    void connectMidiInput()
+    {
+        midiInput.reset();
+        const auto devices = juce::MidiInput::getAvailableDevices();
+        const int index = midiDeviceBox.getSelectedId() - 1;
+        if (index < 0 || index >= devices.size())
+            return;
+        midiInput = juce::MidiInput::openDevice(devices[index].identifier, this);
+        if (midiInput != nullptr)
+        {
+            midiInput->start();
+            midiLabel.setText("MIDI conectado: " + devices[index].name, juce::dontSendNotification);
+            status.setText("Mueve un control físico para comprobar la señal MIDI.", juce::dontSendNotification);
+        }
+        else
+            midiLabel.setText("No se pudo abrir el dispositivo MIDI.", juce::dontSendNotification);
     }
 
     void resized() override
