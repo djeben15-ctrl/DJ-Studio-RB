@@ -379,6 +379,11 @@ public:
         channelLabelA.setText("A", juce::dontSendNotification);
         channelLabelB.setText("B", juce::dontSendNotification);
         masterLabel.setText("MASTER", juce::dontSendNotification);
+        clipLabel.setText("CLIP", juce::dontSendNotification);
+        clipLabel.setJustificationType(juce::Justification::centred);
+        clipLabel.setFont(juce::Font(11.0f, juce::Font::bold));
+        clipLabel.setColour(juce::Label::textColourId, juce::Colour(105, 112, 122));
+        addAndMakeVisible(clipLabel);
         vuLabelA.setText("VU A", juce::dontSendNotification);
         vuLabelB.setText("VU B", juce::dontSendNotification);
         for (auto* label : { &vuLabelA, &vuLabelB })
@@ -588,7 +593,10 @@ public:
             {
                 const float sampleA = scratchA.getSample(channel, sample) * gainA * jogGainA;
                 const float sampleB = scratchB.getSample(channel, sample) * gainB * jogGainB;
-                info.buffer->setSample(channel, info.startSample + sample, sampleA + sampleB);
+                const float mixedSample = sampleA + sampleB;
+                if (std::abs(mixedSample) >= 0.999f)
+                    clipHoldTicks.store(60); // Hold the CLIP warning for about one second.
+                info.buffer->setSample(channel, info.startSample + sample, mixedSample);
                 peakA = juce::jmax(peakA, std::abs(sampleA));
                 peakB = juce::jmax(peakB, std::abs(sampleB));
             }
@@ -733,6 +741,7 @@ public:
         // Master has its own row; crossfader is below it with clear separation.
         masterLabel.setBounds(610, 526, 80, 18);
         masterFader.setBounds(610, 542, 80, 42);
+        clipLabel.setBounds(695, 542, 55, 26);
         mixerLabel.setBounds(485, 584, 310, 18);
         crossfader.setBounds(490, 600, 300, 24);
         status.setBounds(100, 650, 1080, 25);
@@ -762,7 +771,8 @@ private:
     bool jogFadingInA = false, jogFadingInB = false;
     std::unique_ptr<juce::FileChooser> chooserA, chooserB;
 
-    juce::Label title, mixerLabel, status, channelLabelA, channelLabelB, masterLabel, vuLabelA, vuLabelB;
+    juce::Label title, mixerLabel, status, channelLabelA, channelLabelB, masterLabel, vuLabelA, vuLabelB, clipLabel;
+    std::atomic<int> clipHoldTicks{ 0 };
     VUMeter vuMeterA, vuMeterB;
     std::atomic<float> meterLevelA{ 0.0f }, meterLevelB{ 0.0f };
     juce::Label eqLabelLowA, eqLabelMidA, eqLabelHighA, eqLabelLowB, eqLabelMidB, eqLabelHighB;
@@ -1051,6 +1061,16 @@ private:
     {
         vuMeterA.setLevel(meterLevelA.load());
         vuMeterB.setLevel(meterLevelB.load());
+        int clipTicks = clipHoldTicks.load();
+        if (clipTicks > 0)
+        {
+            clipLabel.setColour(juce::Label::textColourId, juce::Colour(255, 65, 60));
+            clipHoldTicks.compare_exchange_strong(clipTicks, clipTicks - 1);
+        }
+        else
+        {
+            clipLabel.setColour(juce::Label::textColourId, juce::Colour(105, 112, 122));
+        }
 
         // Apply each seek only after the audio thread has faded that deck out.
         if (jogSeekReadyA.exchange(false))
