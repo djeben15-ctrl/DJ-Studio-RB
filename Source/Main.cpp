@@ -673,8 +673,9 @@ public:
         eqMidA.setBounds(170, 398, 100, 28);
         eqHighA.setBounds(295, 398, 130, 28);
         jogWheelA.setBounds(180, 432, 110, 110);
-        vuLabelA.setBounds(365, 430, 55, 18);
-        vuMeterA.setBounds(383, 450, 20, 82);
+        // VU meters centered in the mixer, between channel A and channel B.
+        vuLabelA.setBounds(615, 280, 24, 18);
+        vuMeterA.setBounds(621, 300, 12, 88);
 
         loadB.setBounds(855, 155, 115, 42);
         playB.setBounds(980, 155, 95, 42);
@@ -690,8 +691,8 @@ public:
         eqMidB.setBounds(980, 398, 100, 28);
         eqHighB.setBounds(1105, 398, 130, 28);
         jogWheelB.setBounds(990, 432, 110, 110);
-        vuLabelB.setBounds(835, 430, 55, 18);
-        vuMeterB.setBounds(852, 450, 20, 82);
+        vuLabelB.setBounds(645, 280, 24, 18);
+        vuMeterB.setBounds(651, 300, 12, 88);
 
         mixerPanel.setBounds(470, 105, 340, 540);
 
