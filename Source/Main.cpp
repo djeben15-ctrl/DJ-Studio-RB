@@ -259,9 +259,11 @@ private:
 class WaveformDisplay : public juce::Component
 {
 public:
-    void setAudio(std::shared_ptr<juce::AudioBuffer<float>> audio)
+    void setAudio(std::shared_ptr<juce::AudioBuffer<float>> audio, double duration)
     {
         buffer = std::move(audio);
+        durationSeconds = juce::jmax(0.1, duration);
+        buildRgbWaveform();
         repaint();
     }
 
@@ -274,55 +276,124 @@ public:
     void paint(juce::Graphics& g) override
     {
         auto area = getLocalBounds().toFloat();
-        g.setColour(juce::Colour(8, 13, 22));
+        g.setColour(juce::Colour(5, 9, 17));
         g.fillRoundedRectangle(area, 6.0f);
         g.setColour(juce::Colour(48, 61, 78));
         g.drawRoundedRectangle(area.reduced(0.5f), 6.0f, 1.0f);
 
         const float centreY = area.getCentreY();
-        g.setColour(juce::Colour(65, 82, 101));
-        g.drawHorizontalLine(juce::roundToInt(centreY), area.getX() + 5.0f, area.getRight() - 5.0f);
+        g.setColour(juce::Colour(45, 57, 72));
+        g.drawHorizontalLine(juce::roundToInt(centreY), area.getX() + 4.0f, area.getRight() - 4.0f);
 
-        auto audio = buffer;
-        if (audio == nullptr || audio->getNumSamples() == 0)
+        if (rgbBins.empty())
         {
-            g.setColour(juce::Colour(130, 145, 163));
-            g.setFont(12.0f);
-            g.drawFittedText("CARGA UNA PISTA PARA VER LA FORMA DE ONDA",
+            g.setColour(juce::Colour(150, 165, 183));
+            g.setFont(13.0f);
+            g.drawFittedText("CARGA UNA PISTA PARA VER LA ONDA RGB",
                              getLocalBounds(), juce::Justification::centred, 1);
-        }
-        else
-        {
-            const int samples = audio->getNumSamples();
-            const int channels = audio->getNumChannels();
-            const int columns = juce::jmax(1, getWidth() - 12);
-            const float halfHeight = juce::jmax(2.0f, area.getHeight() * 0.43f);
-            for (int x = 0; x < columns; ++x)
-            {
-                const int start = static_cast<int>((static_cast<juce::int64>(x) * samples) / columns);
-                const int end = juce::jmax(start + 1, static_cast<int>((static_cast<juce::int64>(x + 1) * samples) / columns));
-                float peak = 0.0f;
-                for (int ch = 0; ch < channels; ++ch)
-                {
-                    const float* data = audio->getReadPointer(ch);
-                    for (int i = start; i < juce::jmin(end, samples); ++i)
-                        peak = juce::jmax(peak, std::abs(data[i]));
-                }
-                const float h = juce::jlimit(1.0f, halfHeight, peak * halfHeight * 2.8f);
-                const float px = area.getX() + 6.0f + static_cast<float>(x);
-                g.setColour(peak > 0.72f ? juce::Colour(255, 174, 78) : juce::Colour(48, 205, 220));
-                g.drawVerticalLine(juce::roundToInt(px), centreY - h, centreY + h);
-            }
+            return;
         }
 
-        const float cursorX = area.getX() + 6.0f + static_cast<float>(playhead) * (area.getWidth() - 12.0f);
-        g.setColour(juce::Colour(255, 255, 255));
+        // Show a moving 12-second window. The audio waveform scrolls beneath
+        // a fixed playhead, like a DJ performance display.
+        const double visibleSpan = juce::jmin(1.0, 12.0 / durationSeconds);
+        const double leftPosition = juce::jlimit(0.0, 1.0 - visibleSpan,
+                                                  playhead - visibleSpan * 0.35);
+        const int firstBin = juce::jlimit(0, static_cast<int>(rgbBins.size()) - 1,
+            static_cast<int>(leftPosition * static_cast<double>(rgbBins.size())));
+        const int lastBin = juce::jlimit(firstBin + 1, static_cast<int>(rgbBins.size()),
+            static_cast<int>((leftPosition + visibleSpan) * static_cast<double>(rgbBins.size())));
+        const int visibleBins = juce::jmax(1, lastBin - firstBin);
+        const int columns = juce::jmax(1, getWidth() - 12);
+        const float halfHeight = juce::jmax(3.0f, area.getHeight() * 0.46f);
+
+        for (int x = 0; x < columns; ++x)
+        {
+            const int bin = firstBin + juce::jlimit(0, visibleBins - 1,
+                static_cast<int>((static_cast<double>(x) / columns) * visibleBins));
+            const auto& sample = rgbBins[static_cast<size_t>(bin)];
+            const float h = juce::jlimit(1.5f, halfHeight, sample.amplitude * halfHeight * 1.9f);
+            const float px = area.getX() + 6.0f + static_cast<float>(x);
+            g.setColour(sample.colour);
+            g.drawLine(px, centreY - h, px, centreY + h, 1.6f);
+        }
+
+        // Fixed centre marker makes the scrolling movement easy to follow.
+        const float cursorX = area.getX() + area.getWidth() * 0.35f;
+        g.setColour(juce::Colour(255, 255, 255, 235));
         g.drawLine(cursorX, area.getY() + 2.0f, cursorX, area.getBottom() - 2.0f, 2.0f);
+        g.setColour(juce::Colour(255, 70, 75, 210));
+        g.fillEllipse(cursorX - 3.0f, centreY - 3.0f, 6.0f, 6.0f);
     }
 
 private:
+    struct RgbBin
+    {
+        float amplitude = 0.0f;
+        juce::Colour colour = juce::Colours::white;
+    };
+
+    void buildRgbWaveform()
+    {
+        rgbBins.clear();
+        auto audio = buffer;
+        if (audio == nullptr || audio->getNumSamples() == 0)
+            return;
+
+        constexpr int samplesPerBin = 256;
+        const int samples = audio->getNumSamples();
+        const int channels = audio->getNumChannels();
+        const int binCount = (samples + samplesPerBin - 1) / samplesPerBin;
+        rgbBins.reserve(static_cast<size_t>(binCount));
+
+        std::vector<float> lowValues(static_cast<size_t>(binCount), 0.0f);
+        std::vector<float> midValues(static_cast<size_t>(binCount), 0.0f);
+        std::vector<float> highValues(static_cast<size_t>(binCount), 0.0f);
+        std::vector<float> peaks(static_cast<size_t>(binCount), 0.0f);
+        float lowPass = 0.0f;
+        float previous = 0.0f;
+
+        for (int i = 0; i < samples; ++i)
+        {
+            float mono = 0.0f;
+            for (int ch = 0; ch < channels; ++ch)
+                mono += audio->getReadPointer(ch)[i];
+            mono /= static_cast<float>(juce::jmax(1, channels));
+
+            lowPass += 0.025f * (mono - lowPass);
+            const float low = std::abs(lowPass);
+            const float high = std::abs(mono - previous);
+            const float mid = std::abs(mono - lowPass) * 0.65f;
+            previous = mono;
+
+            const size_t bin = static_cast<size_t>(i / samplesPerBin);
+            lowValues[bin] += low;
+            midValues[bin] += mid;
+            highValues[bin] += high;
+            peaks[bin] = juce::jmax(peaks[bin], std::abs(mono));
+        }
+
+        for (int b = 0; b < binCount; ++b)
+        {
+            const int count = juce::jmin(samplesPerBin, samples - b * samplesPerBin);
+            const float divisor = static_cast<float>(juce::jmax(1, count));
+            const float low = juce::jlimit(0.0f, 1.0f, lowValues[static_cast<size_t>(b)] / divisor * 3.2f);
+            const float mid = juce::jlimit(0.0f, 1.0f, midValues[static_cast<size_t>(b)] / divisor * 3.8f);
+            const float high = juce::jlimit(0.0f, 1.0f, highValues[static_cast<size_t>(b)] / divisor * 2.4f);
+            const auto red = static_cast<juce::uint8>(juce::jlimit(25.0f, 255.0f, 24.0f + low * 231.0f));
+            const auto green = static_cast<juce::uint8>(juce::jlimit(25.0f, 255.0f, 24.0f + mid * 231.0f));
+            const auto blue = static_cast<juce::uint8>(juce::jlimit(25.0f, 255.0f, 24.0f + high * 231.0f));
+            RgbBin item;
+            item.amplitude = juce::jlimit(0.02f, 1.0f, peaks[static_cast<size_t>(b)]);
+            item.colour = juce::Colour(red, green, blue);
+            rgbBins.push_back(item);
+        }
+    }
+
     std::shared_ptr<juce::AudioBuffer<float>> buffer;
+    std::vector<RgbBin> rgbBins;
     double playhead = 0.0;
+    double durationSeconds = 1.0;
 };
 
 class VUMeter : public juce::Component
@@ -884,7 +955,7 @@ public:
         playA.setBounds(buttonsAX + loadW + buttonGap, buttonY, playW, 42);
         stopA.setBounds(buttonsAX + loadW + buttonGap + playW + buttonGap, buttonY, stopW, 42);
         trackA.setBounds(margin + 20, 300, deckW - 40, 36);
-        waveformA.setBounds(margin, 92, w - 2 * margin, 34);
+        waveformA.setBounds(margin, 92, w - 2 * margin, 46);
         timeA.setBounds(margin + 20, 409, deckW - 40, 20);
         seekA.setBounds(margin + 20, 432, deckW - 40, 22);
         cueA.setBounds(margin + 20, 465, 85, 30);
@@ -897,7 +968,7 @@ public:
         playB.setBounds(buttonsBX + loadW + buttonGap, buttonY, playW, 42);
         stopB.setBounds(buttonsBX + loadW + buttonGap + playW + buttonGap, buttonY, stopW, 42);
         trackB.setBounds(deckBX + 20, 300, deckW - 40, 36);
-        waveformB.setBounds(margin, 132, w - 2 * margin, 34);
+        waveformB.setBounds(margin, 144, w - 2 * margin, 46);
         timeB.setBounds(deckBX + 20, 409, deckW - 40, 20);
         seekB.setBounds(deckBX + 20, 432, deckW - 40, 22);
         cueB.setBounds(deckBX + 20, 465, 85, 30);
@@ -1599,7 +1670,7 @@ private:
             readerA = std::move(newSource);
             transportA.setSource(readerA.get(), 0, nullptr, sourceSampleRate);
             trackA.setText(file.getFileName(), juce::dontSendNotification);
-            waveformA.setAudio(decodedAudio);
+            waveformA.setAudio(decodedAudio, static_cast<double>(decodedSamples) / sourceSampleRate);
             waveformA.setPlayhead(0.0);
             playA.setButtonText("PLAY");
         }
@@ -1614,7 +1685,7 @@ private:
             readerB = std::move(newSource);
             transportB.setSource(readerB.get(), 0, nullptr, sourceSampleRate);
             trackB.setText(file.getFileName(), juce::dontSendNotification);
-            waveformB.setAudio(decodedAudio);
+            waveformB.setAudio(decodedAudio, static_cast<double>(decodedSamples) / sourceSampleRate);
             waveformB.setPlayhead(0.0);
             playB.setButtonText("PLAY");
         }
