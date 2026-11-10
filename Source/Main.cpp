@@ -297,20 +297,22 @@ public:
         // Show a moving 12-second window. The audio waveform scrolls beneath
         // a fixed playhead, like a DJ performance display.
         const double visibleSpan = juce::jmin(1.0, 12.0 / durationSeconds);
-        const double leftPosition = juce::jlimit(0.0, 1.0 - visibleSpan,
-                                                  playhead - visibleSpan * 0.35);
-        const int firstBin = juce::jlimit(0, static_cast<int>(rgbBins.size()) - 1,
-            static_cast<int>(leftPosition * static_cast<double>(rgbBins.size())));
-        const int lastBin = juce::jlimit(firstBin + 1, static_cast<int>(rgbBins.size()),
-            static_cast<int>((leftPosition + visibleSpan) * static_cast<double>(rgbBins.size())));
-        const int visibleBins = juce::jmax(1, lastBin - firstBin);
+        const double samplesPerPixel = visibleSpan / juce::jmax(1, getWidth() - 12);
         const int columns = juce::jmax(1, getWidth() - 12);
         const float halfHeight = juce::jmax(3.0f, area.getHeight() * 0.46f);
+        const double centrePosition = playhead;
 
+        // Keep the playhead fixed in the exact centre. At the beginning of a
+        // track, the waveform starts at the centre and scrolls left on PLAY.
         for (int x = 0; x < columns; ++x)
         {
-            const int bin = firstBin + juce::jlimit(0, visibleBins - 1,
-                static_cast<int>((static_cast<double>(x) / columns) * visibleBins));
+            const double trackPosition = centrePosition
+                + (static_cast<double>(x) - columns * 0.5) * samplesPerPixel;
+            if (trackPosition < 0.0 || trackPosition >= 1.0)
+                continue;
+
+            const int bin = juce::jlimit(0, static_cast<int>(rgbBins.size()) - 1,
+                static_cast<int>(trackPosition * static_cast<double>(rgbBins.size())));
             const auto& sample = rgbBins[static_cast<size_t>(bin)];
             const float h = juce::jlimit(1.5f, halfHeight, sample.amplitude * halfHeight * 1.9f);
             const float px = area.getX() + 6.0f + static_cast<float>(x);
@@ -318,8 +320,8 @@ public:
             g.drawLine(px, centreY - h, px, centreY + h, 1.6f);
         }
 
-        // Fixed centre marker makes the scrolling movement easy to follow.
-        const float cursorX = area.getX() + area.getWidth() * 0.35f;
+        // Playhead and track start are aligned at the centre when playback begins.
+        const float cursorX = area.getX() + area.getWidth() * 0.5f;
         g.setColour(juce::Colour::fromRGBA(255, 255, 255, 235));
         g.drawLine(cursorX, area.getY() + 2.0f, cursorX, area.getBottom() - 2.0f, 2.0f);
         g.setColour(juce::Colour::fromRGBA(255, 70, 75, 210));
@@ -928,8 +930,8 @@ public:
         const int gap = 14;
         const int mixerW = juce::jlimit(286, 320, w / 4);
         const int deckW = juce::jmax(360, (w - 2 * margin - mixerW - 2 * gap) / 2);
-        const int deckY = 190;
-        const int deckH = 470;
+        const int deckY = 235;
+        const int deckH = 570;
         const int mixerX = margin + deckW + gap;
         const int deckBX = mixerX + mixerW + gap;
 
@@ -945,36 +947,34 @@ public:
         deckA.setBounds(margin, deckY, deckW, deckH);
         deckB.setBounds(deckBX, deckY, deckW, deckH);
 
-        const int buttonY = 245;
-        const int buttonGap = 10;
-        const int loadW = 112, playW = 92, stopW = 92;
-        const int buttonsWidth = loadW + playW + stopW + 2 * buttonGap;
+        // Large dual RGB waveforms span the top, like a two-deck performance view.
+        waveformA.setBounds(margin, 105, w - 2 * margin, 58);
+        waveformB.setBounds(margin, 169, w - 2 * margin, 58);
 
-        const int buttonsAX = margin + (deckW - buttonsWidth) / 2;
-        loadA.setBounds(buttonsAX, buttonY, loadW, 42);
-        playA.setBounds(buttonsAX + loadW + buttonGap, buttonY, playW, 42);
-        stopA.setBounds(buttonsAX + loadW + buttonGap + playW + buttonGap, buttonY, stopW, 42);
-        trackA.setBounds(margin + 20, 300, deckW - 40, 36);
-        waveformA.setBounds(margin, 92, w - 2 * margin, 46);
-        timeA.setBounds(margin + 20, 409, deckW - 40, 20);
-        seekA.setBounds(margin + 20, 432, deckW - 40, 22);
-        cueA.setBounds(margin + 20, 465, 85, 30);
-        volumeLabelA.setBounds(margin + 115, 465, 85, 30);
-        volumeA.setBounds(margin + 200, 465, deckW - 225, 30);
-        jogWheelA.setBounds(margin + (deckW - 110) / 2, 530, 110, 110);
+        // Track title, elapsed/total time and seek bar sit above the deck controls.
+        trackA.setBounds(margin + 20, 285, deckW - 40, 30);
+        timeA.setBounds(margin + 20, 320, deckW - 40, 20);
+        seekA.setBounds(margin + 20, 344, deckW - 40, 22);
+        cueA.setBounds(margin + 22, 390, 120, 42);
+        playA.setBounds(margin + 22, 442, 120, 42);
+        jogWheelA.setBounds(margin + (deckW - 150) / 2, 535, 150, 150);
 
-        const int buttonsBX = deckBX + (deckW - buttonsWidth) / 2;
-        loadB.setBounds(buttonsBX, buttonY, loadW, 42);
-        playB.setBounds(buttonsBX + loadW + buttonGap, buttonY, playW, 42);
-        stopB.setBounds(buttonsBX + loadW + buttonGap + playW + buttonGap, buttonY, stopW, 42);
-        trackB.setBounds(deckBX + 20, 300, deckW - 40, 36);
-        waveformB.setBounds(margin, 144, w - 2 * margin, 46);
-        timeB.setBounds(deckBX + 20, 409, deckW - 40, 20);
-        seekB.setBounds(deckBX + 20, 432, deckW - 40, 22);
-        cueB.setBounds(deckBX + 20, 465, 85, 30);
-        volumeLabelB.setBounds(deckBX + 115, 465, 85, 30);
-        volumeB.setBounds(deckBX + 200, 465, deckW - 225, 30);
-        jogWheelB.setBounds(deckBX + (deckW - 110) / 2, 530, 110, 110);
+        trackB.setBounds(deckBX + 20, 285, deckW - 40, 30);
+        timeB.setBounds(deckBX + 20, 320, deckW - 40, 20);
+        seekB.setBounds(deckBX + 20, 344, deckW - 40, 22);
+        cueB.setBounds(deckBX + 22, 390, 120, 42);
+        playB.setBounds(deckBX + 22, 442, 120, 42);
+        jogWheelB.setBounds(deckBX + (deckW - 150) / 2, 535, 150, 150);
+
+        // Loading remains available from BIBLIOTECA; STOP is intentionally removed.
+        loadA.setVisible(false);
+        loadB.setVisible(false);
+        stopA.setVisible(false);
+        stopB.setVisible(false);
+        volumeLabelA.setVisible(false);
+        volumeLabelB.setVisible(false);
+        volumeA.setVisible(false);
+        volumeB.setVisible(false);
 
         mixerPanel.setBounds(mixerX, 285, mixerW, 540);
 
