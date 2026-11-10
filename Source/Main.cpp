@@ -320,9 +320,9 @@ public:
 
         // Fixed centre marker makes the scrolling movement easy to follow.
         const float cursorX = area.getX() + area.getWidth() * 0.35f;
-        g.setColour(juce::Colour(255, 255, 255, 235));
+        g.setColour(juce::Colour::fromRGBA(255, 255, 255, 235));
         g.drawLine(cursorX, area.getY() + 2.0f, cursorX, area.getBottom() - 2.0f, 2.0f);
-        g.setColour(juce::Colour(255, 70, 75, 210));
+        g.setColour(juce::Colour::fromRGBA(255, 70, 75, 210));
         g.fillEllipse(cursorX - 3.0f, centreY - 3.0f, 6.0f, 6.0f);
     }
 
