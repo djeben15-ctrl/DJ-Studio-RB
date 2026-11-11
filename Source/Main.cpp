@@ -926,14 +926,20 @@ public:
     void resized() override
     {
         const int w = getWidth();
+        const int h = getHeight();
         const int margin = 18;
         const int gap = 14;
         const int mixerW = juce::jlimit(286, 320, w / 4);
         const int deckW = juce::jmax(360, (w - 2 * margin - mixerW - 2 * gap) / 2);
         const int deckY = 235;
-        const int deckH = 570;
+        const int deckH = juce::jmax(500, h - deckY - 18);
         const int mixerX = margin + deckW + gap;
         const int deckBX = mixerX + mixerW + gap;
+        const int deckInner = deckW - 44;
+        const int centerX_A = margin + (deckW - 150) / 2;
+        const int centerX_B = deckBX + (deckW - 150) / 2;
+        // Performance controls are anchored to the bottom of each deck so they
+        // remain visible and centered when the macOS window is resized.
 
         title.setBounds(0, 18, w, 55);
         libraryButton.setBounds(w - margin - 140, 28, 140, 34);
@@ -952,33 +958,45 @@ public:
         waveformB.setBounds(margin, 169, w - 2 * margin, 58);
 
         // Track title, elapsed/total time and seek bar sit above the deck controls.
-        trackA.setBounds(margin + 20, 285, deckW - 40, 30);
-        timeA.setBounds(margin + 20, 320, deckW - 40, 20);
-        seekA.setBounds(margin + 20, 344, deckW - 40, 22);
-        cueA.setBounds(margin + 22, 390, 120, 42);
-        playA.setBounds(margin + 22, 442, 120, 42);
-        jogWheelA.setBounds(margin + (deckW - 150) / 2, 525, 150, 150);
-        loopInButtonA.setBounds(margin + 22, 485, 72, 28);
-        loopOutButtonA.setBounds(margin + 100, 485, 72, 28);
-        reloopButtonA.setBounds(margin + 178, 485, 105, 28);
-        for (int i = 0; i < 4; ++i)
-            padModesA[i].setBounds(margin + 20 + i * ((deckW - 48) / 4), 690, (deckW - 60) / 4, 25);
-        for (int i = 0; i < 8; ++i)
-            hotCuePadsA[i].setBounds(margin + 22 + (i % 4) * ((deckW - 52) / 4), 722 + (i / 4) * 34, (deckW - 66) / 4, 30);
+        const int bottom = h - 18;
+        const int padsY = bottom - 76;
+        const int modesY = padsY - 30;
+        const int jogY = modesY - 164;
+        const int loopY = jogY + 154;
+        const int transportY = jogY - 94;
 
-        trackB.setBounds(deckBX + 20, 285, deckW - 40, 30);
-        timeB.setBounds(deckBX + 20, 320, deckW - 40, 20);
-        seekB.setBounds(deckBX + 20, 344, deckW - 40, 22);
-        cueB.setBounds(deckBX + 22, 390, 120, 42);
-        playB.setBounds(deckBX + 22, 442, 120, 42);
-        jogWheelB.setBounds(deckBX + (deckW - 150) / 2, 525, 150, 150);
-        loopInButtonB.setBounds(deckBX + 22, 485, 72, 28);
-        loopOutButtonB.setBounds(deckBX + 100, 485, 72, 28);
-        reloopButtonB.setBounds(deckBX + 178, 485, 105, 28);
+        trackA.setBounds(margin + 20, deckY + 48, deckW - 40, 28);
+        timeA.setBounds(margin + 20, deckY + 78, deckW - 40, 20);
+        seekA.setBounds(margin + 20, deckY + 102, deckW - 40, 22);
+        cueA.setBounds(margin + 22, transportY, 120, 38);
+        playA.setBounds(margin + 22, transportY + 46, 120, 38);
+        jogWheelA.setBounds(centerX_A, jogY, 150, 150);
+        const int loopWidthA = 252;
+        const int loopStartA = margin + (deckW - loopWidthA) / 2;
+        loopInButtonA.setBounds(loopStartA, loopY, 76, 28);
+        loopOutButtonA.setBounds(loopStartA + 82, loopY, 76, 28);
+        reloopButtonA.setBounds(loopStartA + 164, loopY, 88, 28);
         for (int i = 0; i < 4; ++i)
-            padModesB[i].setBounds(deckBX + 20 + i * ((deckW - 48) / 4), 690, (deckW - 60) / 4, 25);
+            padModesA[i].setBounds(margin + 20 + i * (deckInner / 4), modesY, (deckInner - 12) / 4, 25);
         for (int i = 0; i < 8; ++i)
-            hotCuePadsB[i].setBounds(deckBX + 22 + (i % 4) * ((deckW - 52) / 4), 722 + (i / 4) * 34, (deckW - 66) / 4, 30);
+            hotCuePadsA[i].setBounds(margin + 22 + (i % 4) * (deckInner / 4),
+                                     padsY + (i / 4) * 34, (deckInner - 18) / 4, 30);
+
+        trackB.setBounds(deckBX + 20, deckY + 48, deckW - 40, 28);
+        timeB.setBounds(deckBX + 20, deckY + 78, deckW - 40, 20);
+        seekB.setBounds(deckBX + 20, deckY + 102, deckW - 40, 22);
+        cueB.setBounds(deckBX + 22, transportY, 120, 38);
+        playB.setBounds(deckBX + 22, transportY + 46, 120, 38);
+        jogWheelB.setBounds(centerX_B, jogY, 150, 150);
+        const int loopStartB = deckBX + (deckW - loopWidthA) / 2;
+        loopInButtonB.setBounds(loopStartB, loopY, 76, 28);
+        loopOutButtonB.setBounds(loopStartB + 82, loopY, 76, 28);
+        reloopButtonB.setBounds(loopStartB + 164, loopY, 88, 28);
+        for (int i = 0; i < 4; ++i)
+            padModesB[i].setBounds(deckBX + 20 + i * (deckInner / 4), modesY, (deckInner - 12) / 4, 25);
+        for (int i = 0; i < 8; ++i)
+            hotCuePadsB[i].setBounds(deckBX + 22 + (i % 4) * (deckInner / 4),
+                                     padsY + (i / 4) * 34, (deckInner - 18) / 4, 30);
 
         // Loading remains available from BIBLIOTECA; STOP is intentionally removed.
         loadA.setVisible(false);
