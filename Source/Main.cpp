@@ -959,17 +959,27 @@ public:
 
         // Track title, elapsed/total time and seek bar sit above the deck controls.
         const int bottom = h - 18;
-        const int padsY = bottom - 76;
-        const int modesY = padsY - 30;
-        const int jogY = modesY - 164;
-        const int loopY = jogY + 154;
-        const int transportY = jogY - 94;
+        const int padHeight = 27;
+        const int padGap = 5;
+        const int padsY = bottom - (2 * padHeight + padGap);
+        const int modesY = padsY - 32;
+        const int loopY = modesY - 34;
+        const int jogY = loopY - 154;
+        const int transportY = jogY - 43;
+        const int innerLeftA = margin + 22;
+        const int innerLeftB = deckBX + 22;
+        const int innerWidth = deckW - 44;
+        const int padColumnWidth = (innerWidth - 18) / 4;
+        const int transportWidth = 120;
+        const int transportGap = 14;
+        const int transportStartA = margin + (deckW - (2 * transportWidth + transportGap)) / 2;
+        const int transportStartB = deckBX + (deckW - (2 * transportWidth + transportGap)) / 2;
 
         trackA.setBounds(margin + 20, deckY + 48, deckW - 40, 28);
         timeA.setBounds(margin + 20, deckY + 78, deckW - 40, 20);
         seekA.setBounds(margin + 20, deckY + 102, deckW - 40, 22);
-        cueA.setBounds(margin + 22, transportY, 120, 38);
-        playA.setBounds(margin + 22, transportY + 46, 120, 38);
+        cueA.setBounds(transportStartA, transportY, transportWidth, 36);
+        playA.setBounds(transportStartA + transportWidth + transportGap, transportY, transportWidth, 36);
         jogWheelA.setBounds(centerX_A, jogY, 150, 150);
         const int loopWidthA = 252;
         const int loopStartA = margin + (deckW - loopWidthA) / 2;
@@ -977,26 +987,26 @@ public:
         loopOutButtonA.setBounds(loopStartA + 82, loopY, 76, 28);
         reloopButtonA.setBounds(loopStartA + 164, loopY, 88, 28);
         for (int i = 0; i < 4; ++i)
-            padModesA[i].setBounds(margin + 20 + i * (deckInner / 4), modesY, (deckInner - 12) / 4, 25);
+            padModesA[i].setBounds(innerLeftA + i * (innerWidth / 4), modesY, padColumnWidth, 25);
         for (int i = 0; i < 8; ++i)
-            hotCuePadsA[i].setBounds(margin + 22 + (i % 4) * (deckInner / 4),
-                                     padsY + (i / 4) * 34, (deckInner - 18) / 4, 30);
+            hotCuePadsA[i].setBounds(innerLeftA + (i % 4) * (innerWidth / 4),
+                                     padsY + (i / 4) * (padHeight + padGap), padColumnWidth, padHeight);
 
         trackB.setBounds(deckBX + 20, deckY + 48, deckW - 40, 28);
         timeB.setBounds(deckBX + 20, deckY + 78, deckW - 40, 20);
         seekB.setBounds(deckBX + 20, deckY + 102, deckW - 40, 22);
-        cueB.setBounds(deckBX + 22, transportY, 120, 38);
-        playB.setBounds(deckBX + 22, transportY + 46, 120, 38);
+        cueB.setBounds(transportStartB, transportY, transportWidth, 36);
+        playB.setBounds(transportStartB + transportWidth + transportGap, transportY, transportWidth, 36);
         jogWheelB.setBounds(centerX_B, jogY, 150, 150);
         const int loopStartB = deckBX + (deckW - loopWidthA) / 2;
         loopInButtonB.setBounds(loopStartB, loopY, 76, 28);
         loopOutButtonB.setBounds(loopStartB + 82, loopY, 76, 28);
         reloopButtonB.setBounds(loopStartB + 164, loopY, 88, 28);
         for (int i = 0; i < 4; ++i)
-            padModesB[i].setBounds(deckBX + 20 + i * (deckInner / 4), modesY, (deckInner - 12) / 4, 25);
+            padModesB[i].setBounds(innerLeftB + i * (innerWidth / 4), modesY, padColumnWidth, 25);
         for (int i = 0; i < 8; ++i)
-            hotCuePadsB[i].setBounds(deckBX + 22 + (i % 4) * (deckInner / 4),
-                                     padsY + (i / 4) * 34, (deckInner - 18) / 4, 30);
+            hotCuePadsB[i].setBounds(innerLeftB + (i % 4) * (innerWidth / 4),
+                                     padsY + (i / 4) * (padHeight + padGap), padColumnWidth, padHeight);
 
         // Loading remains available from BIBLIOTECA; STOP is intentionally removed.
         loadA.setVisible(false);
