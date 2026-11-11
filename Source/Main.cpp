@@ -509,6 +509,7 @@ public:
 
         mixerLabel.setText("CROSSFADER   A  ◀────●────▶  B", juce::dontSendNotification);
         mixerLabel.setJustificationType(juce::Justification::centred);
+        mixerLabel.setJustificationType(juce::Justification::centred);
         addAndMakeVisible(mixerLabel);
         channelLabelA.setText("A", juce::dontSendNotification);
         channelLabelB.setText("B", juce::dontSendNotification);
@@ -1067,8 +1068,12 @@ public:
         masterLabel.setBounds(mixerX + (mixerW - 80) / 2, 616, 80, 18);
         masterFader.setBounds(mixerX + (mixerW - 80) / 2, 632, 80, 42);
         clipLabel.setBounds(mixerX + mixerW - 66, 632, 55, 26);
-        mixerLabel.setBounds(mixerX + 15, 674, mixerW - 30, 18);
-        crossfader.setBounds(mixerX + 20, 690, mixerW - 40, 24);
+        // Center the crossfader label and slider on the mixer's exact midpoint.
+        const int crossfaderWidth = juce::jmin(220, mixerW - 56);
+        const int crossfaderX = mixerX + (mixerW - crossfaderWidth) / 2;
+        mixerLabel.setBounds(mixerX + 12, 674, mixerW - 24, 18);
+        mixerLabel.setJustificationType(juce::Justification::centred);
+        crossfader.setBounds(crossfaderX, 690, crossfaderWidth, 24);
         status.setBounds(margin, 740, w - 2 * margin, 25);
     }
 private:
