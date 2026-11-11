@@ -1065,15 +1065,16 @@ public:
         filterLabelB.setBounds(mixerX + mixerW - 154, 540, 72, 18);
         filterB.setBounds(mixerX + mixerW - 154, 558, 72, 54);
 
-        masterLabel.setBounds(mixerX + (mixerW - 80) / 2, 616, 80, 18);
-        masterFader.setBounds(mixerX + (mixerW - 80) / 2, 632, 80, 42);
-        clipLabel.setBounds(mixerX + mixerW - 66, 632, 55, 26);
-        // Center the crossfader label and slider on the mixer's exact midpoint.
+        masterLabel.setBounds(mixerX + (mixerW - 80) / 2, 612, 80, 18);
+        masterFader.setBounds(mixerX + (mixerW - 80) / 2, 628, 80, 28);
+        clipLabel.setBounds(mixerX + mixerW - 66, 628, 55, 26);
+        // Keep the complete crossfader visible above the macOS Dock, centered
+        // on the mixer panel rather than on the full application window.
         const int crossfaderWidth = juce::jmin(220, mixerW - 56);
         const int crossfaderX = mixerX + (mixerW - crossfaderWidth) / 2;
-        mixerLabel.setBounds(mixerX + 12, 674, mixerW - 24, 18);
+        mixerLabel.setBounds(mixerX + 12, 658, mixerW - 24, 18);
         mixerLabel.setJustificationType(juce::Justification::centred);
-        crossfader.setBounds(crossfaderX, 690, crossfaderWidth, 24);
+        crossfader.setBounds(crossfaderX, 674, crossfaderWidth, 20);
         status.setBounds(margin, 740, w - 2 * margin, 25);
     }
 private:
