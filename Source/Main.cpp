@@ -957,14 +957,28 @@ public:
         seekA.setBounds(margin + 20, 344, deckW - 40, 22);
         cueA.setBounds(margin + 22, 390, 120, 42);
         playA.setBounds(margin + 22, 442, 120, 42);
-        jogWheelA.setBounds(margin + (deckW - 150) / 2, 535, 150, 150);
+        jogWheelA.setBounds(margin + (deckW - 150) / 2, 525, 150, 150);
+        loopInButtonA.setBounds(margin + 22, 485, 72, 28);
+        loopOutButtonA.setBounds(margin + 100, 485, 72, 28);
+        reloopButtonA.setBounds(margin + 178, 485, 105, 28);
+        for (int i = 0; i < 4; ++i)
+            padModesA[i].setBounds(margin + 20 + i * ((deckW - 48) / 4), 690, (deckW - 60) / 4, 25);
+        for (int i = 0; i < 8; ++i)
+            hotCuePadsA[i].setBounds(margin + 22 + (i % 4) * ((deckW - 52) / 4), 722 + (i / 4) * 34, (deckW - 66) / 4, 30);
 
         trackB.setBounds(deckBX + 20, 285, deckW - 40, 30);
         timeB.setBounds(deckBX + 20, 320, deckW - 40, 20);
         seekB.setBounds(deckBX + 20, 344, deckW - 40, 22);
         cueB.setBounds(deckBX + 22, 390, 120, 42);
         playB.setBounds(deckBX + 22, 442, 120, 42);
-        jogWheelB.setBounds(deckBX + (deckW - 150) / 2, 535, 150, 150);
+        jogWheelB.setBounds(deckBX + (deckW - 150) / 2, 525, 150, 150);
+        loopInButtonB.setBounds(deckBX + 22, 485, 72, 28);
+        loopOutButtonB.setBounds(deckBX + 100, 485, 72, 28);
+        reloopButtonB.setBounds(deckBX + 178, 485, 105, 28);
+        for (int i = 0; i < 4; ++i)
+            padModesB[i].setBounds(deckBX + 20 + i * ((deckW - 48) / 4), 690, (deckW - 60) / 4, 25);
+        for (int i = 0; i < 8; ++i)
+            hotCuePadsB[i].setBounds(deckBX + 22 + (i % 4) * ((deckW - 52) / 4), 722 + (i / 4) * 34, (deckW - 66) / 4, 30);
 
         // Loading remains available from BIBLIOTECA; STOP is intentionally removed.
         loadA.setVisible(false);
@@ -1087,6 +1101,15 @@ private:
     juce::Slider crossfader, seekA, seekB, volumeA, volumeB;
     juce::TextButton cueA{"CUE / INICIO"};
     juce::TextButton cueB{"CUE / INICIO"};
+    juce::TextButton padModesA[4], padModesB[4];
+    juce::TextButton hotCuePadsA[8], hotCuePadsB[8];
+    juce::TextButton loopInButtonA{"IN"}, loopOutButtonA{"OUT"}, reloopButtonA{"RELOOP"};
+    juce::TextButton loopInButtonB{"IN"}, loopOutButtonB{"OUT"}, reloopButtonB{"RELOOP"};
+    int activePadModeA = 0, activePadModeB = 0;
+    double hotCuePositionsA[8] = { -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0 };
+    double hotCuePositionsB[8] = { -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0 };
+    double loopInA = 0.0, loopOutA = 0.0, loopInB = 0.0, loopOutB = 0.0;
+    bool loopEnabledA = false, loopEnabledB = false;
     juce::Label timeA, timeB, volumeLabelA, volumeLabelB, eqTitleA, eqTitleB;
     juce::Slider eqLowA, eqMidA, eqHighA, eqLowB, eqMidB, eqHighB;
     VirtualJogWheel jogWheelA, jogWheelB;
@@ -1347,6 +1370,104 @@ private:
         };
         addAndMakeVisible(jogWheelA);
         addAndMakeVisible(jogWheelB);
+
+        // Performance section shared by both decks: four pad modes, eight hot cues and loop controls.
+        auto setupPerformance = [this](juce::TextButton* modes, juce::TextButton* pads,
+                                       juce::TextButton& loopIn, juce::TextButton& loopOut,
+                                       juce::TextButton& reloop, int deckNumber)
+        {
+            const juce::String names[] = { "HOT CUE", "PAD FX1", "SLICER", "SAMPLER" };
+            for (int i = 0; i < 4; ++i)
+            {
+                modes[i].setButtonText(names[i]);
+                modes[i].setClickingTogglesState(true);
+                modes[i].setColour(juce::TextButton::buttonColourId, juce::Colour(35, 43, 54));
+                modes[i].setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+                modes[i].setColour(juce::TextButton::textColourOnId, juce::Colour(35, 220, 205));
+                addAndMakeVisible(modes[i]);
+                modes[i].onClick = [this, modes, deckNumber, i]
+                {
+                    for (int j = 0; j < 4; ++j) modes[j].setToggleState(j == i, juce::dontSendNotification);
+                    (deckNumber == 0 ? activePadModeA : activePadModeB) = i;
+                    status.setText("DECK " + juce::String(deckNumber == 0 ? "A" : "B")
+                        + ": modo " + modes[i].getButtonText() + ".", juce::dontSendNotification);
+                };
+            }
+            for (int i = 0; i < 8; ++i)
+            {
+                pads[i].setButtonText(juce::String(i + 1));
+                pads[i].setColour(juce::TextButton::buttonColourId, juce::Colour(30, 35, 45));
+                pads[i].setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+                pads[i].setColour(juce::TextButton::buttonOnColourId, juce::Colour(235, 55, 75));
+                addAndMakeVisible(pads[i]);
+                pads[i].onClick = [this, pads, deckNumber, i]
+                {
+                    if ((deckNumber == 0 ? activePadModeA : activePadModeB) != 0)
+                    {
+                        status.setText("PAD FX1, SLICER y SAMPLER: mapeo funcional pendiente.",
+                                       juce::dontSendNotification);
+                        return;
+                    }
+                    auto& transport = (deckNumber == 0 ? transportA : transportB);
+                    auto* reader = (deckNumber == 0 ? readerA.get() : readerB.get());
+                    auto& positions = (deckNumber == 0 ? hotCuePositionsA : hotCuePositionsB);
+                    if (reader == nullptr)
+                    {
+                        status.setText("Carga una pista antes de guardar HOT CUE.", juce::dontSendNotification);
+                        return;
+                    }
+                    if (positions[i] < 0.0)
+                    {
+                        positions[i] = transport.getCurrentPosition();
+                        pads[i].setColour(juce::TextButton::buttonColourId, juce::Colour(190, 35, 55));
+                        status.setText("HOT CUE " + juce::String(i + 1) + " guardado en DECK "
+                            + juce::String(deckNumber == 0 ? "A." : "B."), juce::dontSendNotification);
+                    }
+                    else
+                    {
+                        transport.setPosition(positions[i]);
+                        status.setText("Saltando a HOT CUE " + juce::String(i + 1) + ".", juce::dontSendNotification);
+                    }
+                };
+            }
+            for (auto* button : { &loopIn, &loopOut, &reloop })
+            {
+                button->setColour(juce::TextButton::buttonColourId, juce::Colour(45, 55, 70));
+                button->setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+                addAndMakeVisible(button);
+            }
+            loopIn.onClick = [this, deckNumber]
+            {
+                (deckNumber == 0 ? loopInA : loopInB) =
+                    (deckNumber == 0 ? transportA : transportB).getCurrentPosition();
+                status.setText("LOOP IN marcado en DECK " + juce::String(deckNumber == 0 ? "A." : "B."),
+                               juce::dontSendNotification);
+            };
+            loopOut.onClick = [this, deckNumber]
+            {
+                auto& in = (deckNumber == 0 ? loopInA : loopInB);
+                auto& out = (deckNumber == 0 ? loopOutA : loopOutB);
+                auto& transport = (deckNumber == 0 ? transportA : transportB);
+                if (transport.getCurrentPosition() > in + 0.05)
+                {
+                    out = transport.getCurrentPosition();
+                    (deckNumber == 0 ? loopEnabledA : loopEnabledB) = true;
+                    status.setText("LOOP activado en DECK " + juce::String(deckNumber == 0 ? "A." : "B."),
+                                   juce::dontSendNotification);
+                }
+                else status.setText("Marca LOOP IN antes de LOOP OUT.", juce::dontSendNotification);
+            };
+            reloop.onClick = [this, deckNumber]
+            {
+                auto& enabled = (deckNumber == 0 ? loopEnabledA : loopEnabledB);
+                enabled = !enabled;
+                status.setText(juce::String(enabled ? "LOOP activado en DECK " : "LOOP desactivado en DECK ")
+                    + (deckNumber == 0 ? "A." : "B."), juce::dontSendNotification);
+            };
+        };
+        setupPerformance(padModesA, hotCuePadsA, loopInButtonA, loopOutButtonA, reloopButtonA, 0);
+        setupPerformance(padModesB, hotCuePadsB, loopInButtonB, loopOutButtonB, reloopButtonB, 1);
+
         for (auto* button : { &cueA, &cueB })
         {
             button->setColour(juce::TextButton::buttonColourId, juce::Colour(45, 55, 70));
@@ -1383,6 +1504,12 @@ private:
         const double lengthB = transportB.getLengthInSeconds();
         waveformA.setPlayhead(lengthA > 0.0 ? transportA.getCurrentPosition() / lengthA : 0.0);
         waveformB.setPlayhead(lengthB > 0.0 ? transportB.getCurrentPosition() / lengthB : 0.0);
+        if (loopEnabledA && loopOutA > loopInA && transportA.isPlaying()
+            && transportA.getCurrentPosition() >= loopOutA)
+            transportA.setPosition(loopInA);
+        if (loopEnabledB && loopOutB > loopInB && transportB.isPlaying()
+            && transportB.getCurrentPosition() >= loopOutB)
+            transportB.setPosition(loopInB);
 
         // Execute controller requests safely on JUCE's message thread.
         if (midiPlayARequest.exchange(false))
