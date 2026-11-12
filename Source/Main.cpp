@@ -1019,7 +1019,10 @@ public:
         volumeA.setVisible(false);
         volumeB.setVisible(false);
 
-        mixerPanel.setBounds(mixerX, 285, mixerW, 540);
+        // Fit the entire mixer in the visible window area, leaving room for the macOS Dock.
+        const auto my = [](int y) { return 222 + juce::roundToInt((y - 222) * 0.80f); };
+        const auto mh = [](int value) { return juce::roundToInt(value * 0.80f); };
+        mixerPanel.setBounds(mixerX, my(222), mixerW, my(694) - my(222));
 
         const int colW = 90;
         const int colAX = mixerX + 12;
@@ -1048,33 +1051,33 @@ public:
 
         // Keep both VU meters paired and centered between A and B channels.
         const int vuX = mixerX + (mixerW - 42) / 2;
-        vuLabelA.setBounds(vuX - 2, 368, 22, 20);
-        vuMeterA.setBounds(vuX, 390, 18, 108);
-        vuLabelB.setBounds(vuX + 22, 368, 22, 20);
-        vuMeterB.setBounds(vuX + 22, 390, 18, 108);
-        headphoneCueAButton.setBounds(mixerX + (mixerW - 126) / 2, 506, 60, 26);
-        headphoneCueBButton.setBounds(mixerX + (mixerW - 126) / 2 + 66, 506, 60, 26);
+        vuLabelA.setBounds(vuX - 2, my(368), 22, mh(20));
+        vuMeterA.setBounds(vuX, my(390), 18, mh(108));
+        vuLabelB.setBounds(vuX + 22, my(368), 22, mh(20));
+        vuMeterB.setBounds(vuX + 22, my(390), 18, mh(108));
+        headphoneCueAButton.setBounds(mixerX + (mixerW - 126) / 2, my(506), 60, mh(26));
+        headphoneCueBButton.setBounds(mixerX + (mixerW - 126) / 2 + 66, my(506), 60, mh(26));
 
-        volumeLabelA.setBounds(mixerX + 8, 540, 70, 18);
-        volumeA.setBounds(mixerX + 12, 558, 58, 62);
-        volumeLabelB.setBounds(mixerX + mixerW - 78, 540, 70, 18);
-        volumeB.setBounds(mixerX + mixerW - 70, 558, 58, 62);
+        volumeLabelA.setBounds(mixerX + 8, my(540), 70, mh(18));
+        volumeA.setBounds(mixerX + 12, my(558), 58, mh(62));
+        volumeLabelB.setBounds(mixerX + mixerW - 78, my(540), 70, mh(18));
+        volumeB.setBounds(mixerX + mixerW - 70, my(558), 58, mh(62));
 
-        filterLabelA.setBounds(mixerX + 82, 540, 72, 18);
-        filterA.setBounds(mixerX + 82, 558, 72, 54);
-        filterLabelB.setBounds(mixerX + mixerW - 154, 540, 72, 18);
-        filterB.setBounds(mixerX + mixerW - 154, 558, 72, 54);
+        filterLabelA.setBounds(mixerX + 82, my(540), 72, mh(18));
+        filterA.setBounds(mixerX + 82, my(558), 72, mh(54));
+        filterLabelB.setBounds(mixerX + mixerW - 154, my(540), 72, mh(18));
+        filterB.setBounds(mixerX + mixerW - 154, my(558), 72, mh(54));
 
-        masterLabel.setBounds(mixerX + (mixerW - 80) / 2, 612, 80, 18);
-        masterFader.setBounds(mixerX + (mixerW - 80) / 2, 628, 80, 28);
-        clipLabel.setBounds(mixerX + mixerW - 66, 628, 55, 26);
+        masterLabel.setBounds(mixerX + (mixerW - 80) / 2, my(612), 80, mh(18));
+        masterFader.setBounds(mixerX + (mixerW - 80) / 2, my(628), 80, mh(28));
+        clipLabel.setBounds(mixerX + mixerW - 66, my(628), 55, mh(26));
         // Keep the complete crossfader visible above the macOS Dock, centered
         // on the mixer panel rather than on the full application window.
         const int crossfaderWidth = juce::jmin(220, mixerW - 56);
         const int crossfaderX = mixerX + (mixerW - crossfaderWidth) / 2;
-        mixerLabel.setBounds(mixerX + 12, 658, mixerW - 24, 18);
+        mixerLabel.setBounds(mixerX + 12, my(658), mixerW - 24, mh(18));
         mixerLabel.setJustificationType(juce::Justification::centred);
-        crossfader.setBounds(crossfaderX, 674, crossfaderWidth, 20);
+        crossfader.setBounds(crossfaderX, my(674), crossfaderWidth, mh(20));
         status.setBounds(margin, 740, w - 2 * margin, 25);
     }
 private:
