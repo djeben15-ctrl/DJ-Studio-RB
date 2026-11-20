@@ -578,6 +578,42 @@ public:
         };
         setupPitchFader(pitchA);
         setupPitchFader(pitchB);
+        pitchA.setRange(-8.0, 8.0, 0.1);
+        pitchB.setRange(-8.0, 8.0, 0.1);
+
+        auto setupPitchOptions = [this](juce::ComboBox& range, juce::ToggleButton& keyLock)
+        {
+            range.addItem("±8%", 8);
+            range.addItem("±10%", 10);
+            range.addItem("±16%", 16);
+            range.setSelectedId(8, juce::dontSendNotification);
+            range.setColour(juce::ComboBox::backgroundColourId, juce::Colour(30, 38, 48));
+            range.setColour(juce::ComboBox::textColourId, juce::Colours::white);
+            addAndMakeVisible(range);
+            keyLock.setButtonText("MASTER TEMPO");
+            keyLock.setToggleState(true, juce::dontSendNotification);
+            keyLock.setColour(juce::TextButton::buttonColourId, juce::Colour(35, 90, 90));
+            keyLock.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
+            keyLock.setColour(juce::TextButton::textColourOnId, juce::Colour(35, 230, 210));
+            addAndMakeVisible(keyLock);
+        };
+        setupPitchOptions(pitchRangeA, keyLockA);
+        setupPitchOptions(pitchRangeB, keyLockB);
+        pitchRangeA.onChange = [this] { pitchA.setRange(-pitchRangeA.getSelectedId(), pitchRangeA.getSelectedId(), 0.1); };
+        pitchRangeB.onChange = [this] { pitchB.setRange(-pitchRangeB.getSelectedId(), pitchRangeB.getSelectedId(), 0.1); };
+        keyLockA.onClick = [this] { pitchSourceA.setPitchPercent(pitchA.getValue(), keyLockA.getToggleState()); };
+        keyLockB.onClick = [this] { pitchSourceB.setPitchPercent(pitchB.getValue(), keyLockB.getToggleState()); };
+
+        auto setupBpmLabel = [this](juce::Label& label)
+        {
+            label.setText("BPM: --", juce::dontSendNotification);
+            label.setJustificationType(juce::Justification::centredLeft);
+            label.setColour(juce::Label::textColourId, juce::Colours::white);
+            label.setFont(juce::Font(13.0f, juce::Font::bold));
+            addAndMakeVisible(label);
+        };
+        setupBpmLabel(bpmLabelA);
+        setupBpmLabel(bpmLabelB);
 
         auto setupPitchLabel = [this](juce::Label& label, const juce::String& text)
         {
@@ -597,18 +633,24 @@ public:
             const double percent = pitchA.getValue();
             const double ratio = 1.0 + percent / 100.0;
             pitchRatioA.store(ratio);
-            pitchSourceA.setResamplingRatio(ratio);
+            pitchSourceA.setPitchPercent(percent, keyLockA.getToggleState());
             pitchValueA.setText((percent > 0.0 ? "+" : "") + juce::String(percent, 1) + "%",
                                 juce::dontSendNotification);
+            if (detectedBpmA > 0.0)
+                bpmLabelA.setText("BPM: " + juce::String(detectedBpmA, 1) + "  |  ACTUAL: " +
+                    juce::String(detectedBpmA * ratio, 1), juce::dontSendNotification);
         };
         pitchB.onValueChange = [this]
         {
             const double percent = pitchB.getValue();
             const double ratio = 1.0 + percent / 100.0;
             pitchRatioB.store(ratio);
-            pitchSourceB.setResamplingRatio(ratio);
+            pitchSourceB.setPitchPercent(percent, keyLockB.getToggleState());
             pitchValueB.setText((percent > 0.0 ? "+" : "") + juce::String(percent, 1) + "%",
                                 juce::dontSendNotification);
+            if (detectedBpmB > 0.0)
+                bpmLabelB.setText("BPM: " + juce::String(detectedBpmB, 1) + "  |  ACTUAL: " +
+                    juce::String(detectedBpmB * ratio, 1), juce::dontSendNotification);
         };
 
         loadA.onClick = [this] { loadTrack(0); };
@@ -804,8 +846,8 @@ public:
     {
         pitchSourceA.prepareToPlay(samplesPerBlockExpected, sampleRate);
         pitchSourceB.prepareToPlay(samplesPerBlockExpected, sampleRate);
-        pitchSourceA.setResamplingRatio(pitchRatioA.load());
-        pitchSourceB.setResamplingRatio(pitchRatioB.load());
+        pitchSourceA.setPitchPercent(pitchA.getValue(), keyLockA.getToggleState());
+        pitchSourceB.setPitchPercent(pitchB.getValue(), keyLockB.getToggleState());
         outputSampleRate = sampleRate;
         lowAlpha = 1.0f - std::exp(-2.0f * juce::MathConstants<float>::pi * 250.0f / static_cast<float>(sampleRate));
         midAlpha = 1.0f - std::exp(-2.0f * juce::MathConstants<float>::pi * 4000.0f / static_cast<float>(sampleRate));
@@ -1146,6 +1188,9 @@ public:
         pitchLabelA.setBounds(pitchX_A - 7, jogY - 22, 54, 18);
         pitchA.setBounds(pitchX_A, jogY, 36, 126);
         pitchValueA.setBounds(pitchX_A - 9, jogY + 127, 54, 18);
+        pitchRangeA.setBounds(pitchX_A - 18, jogY + 151, 66, 24);
+        keyLockA.setBounds(pitchX_A - 28, jogY + 178, 88, 24);
+        bpmLabelA.setBounds(margin + 20, deckY + 24, deckW - 40, 22);
         const int loopWidthA = 252;
         const int loopStartA = margin + (deckW - loopWidthA) / 2;
         loopInButtonA.setBounds(loopStartA, loopY, 76, 28);
@@ -1166,6 +1211,9 @@ public:
         pitchLabelB.setBounds(pitchX_B - 7, jogY - 22, 54, 18);
         pitchB.setBounds(pitchX_B, jogY, 36, 126);
         pitchValueB.setBounds(pitchX_B - 9, jogY + 127, 54, 18);
+        pitchRangeB.setBounds(pitchX_B - 18, jogY + 151, 66, 24);
+        keyLockB.setBounds(pitchX_B - 28, jogY + 178, 88, 24);
+        bpmLabelB.setBounds(deckBX + 20, deckY + 24, deckW - 40, 22);
         const int loopStartB = deckBX + (deckW - loopWidthA) / 2;
         loopInButtonB.setBounds(loopStartB, loopY, 76, 28);
         loopOutButtonB.setBounds(loopStartB + 82, loopY, 76, 28);
@@ -1250,8 +1298,8 @@ public:
 private:
     juce::AudioFormatManager formatManager;
     juce::AudioTransportSource transportA, transportB;
-    juce::ResamplingAudioSource pitchSourceA{ &transportA, false, 2 };
-    juce::ResamplingAudioSource pitchSourceB{ &transportB, false, 2 };
+    PitchTempoSource pitchSourceA{ transportA };
+    PitchTempoSource pitchSourceB{ transportB };
     std::atomic<double> pitchRatioA{ 1.0 }, pitchRatioB{ 1.0 };
     std::unique_ptr<juce::AudioFormatReaderSource> readerA, readerB;
     juce::AudioBuffer<float> scratchA, scratchB;
@@ -1307,7 +1355,10 @@ private:
     juce::Label trackA, trackB;
     juce::Slider crossfader, seekA, seekB, volumeA, volumeB;
     juce::Slider pitchA, pitchB;
-    juce::Label pitchLabelA, pitchLabelB, pitchValueA, pitchValueB;
+    juce::Label pitchLabelA, pitchLabelB, pitchValueA, pitchValueB, bpmLabelA, bpmLabelB;
+    juce::ComboBox pitchRangeA, pitchRangeB;
+    juce::ToggleButton keyLockA, keyLockB;
+    double detectedBpmA = 0.0, detectedBpmB = 0.0;
     juce::TextButton cueA{"CUE / INICIO"};
     juce::TextButton cueB{"CUE / INICIO"};
     juce::TextButton padModesA[4], padModesB[4];
@@ -1993,6 +2044,26 @@ private:
             return;
         }
 
+        // Analyze the decoded track once, off the audio callback, to show its original BPM.
+        double detectedBpm = 0.0;
+        const int bpmChannels = juce::jmin(2, decodedAudio->getNumChannels());
+        if (bpmChannels > 0)
+        {
+            soundtouch::BPMDetect detector(bpmChannels, static_cast<int>(sourceSampleRate));
+            constexpr int bpmChunk = 4096;
+            std::vector<soundtouch::SAMPLETYPE> interleaved(static_cast<size_t>(bpmChunk) * bpmChannels);
+            for (int offset = 0; offset < decodedSamples; offset += bpmChunk)
+            {
+                const int count = juce::jmin(bpmChunk, decodedSamples - offset);
+                for (int i = 0; i < count; ++i)
+                    for (int ch = 0; ch < bpmChannels; ++ch)
+                        interleaved[static_cast<size_t>(i) * bpmChannels + ch] =
+                            decodedAudio->getSample(ch, offset + i);
+                detector.inputSamples(interleaved.data(), count);
+            }
+            detectedBpm = detector.getBpm();
+        }
+
         std::unique_ptr<juce::AudioFormatReaderSource> newSource(
             new juce::AudioFormatReaderSource(reader.release(), true));
 
@@ -2007,6 +2078,11 @@ private:
             readerA = std::move(newSource);
             transportA.setSource(readerA.get(), 0, nullptr, sourceSampleRate);
             trackA.setText(file.getFileName(), juce::dontSendNotification);
+            detectedBpmA = detectedBpm;
+            bpmLabelA.setText(detectedBpmA > 0.0
+                ? "BPM: " + juce::String(detectedBpmA, 1) + "  |  ACTUAL: " +
+                    juce::String(detectedBpmA * (1.0 + pitchA.getValue() / 100.0), 1)
+                : "BPM: no detectado", juce::dontSendNotification);
             waveformA.setAudio(decodedAudio, static_cast<double>(decodedSamples) / sourceSampleRate);
             waveformA.setPlayhead(0.0);
             playA.setButtonText("PLAY");
@@ -2022,6 +2098,11 @@ private:
             readerB = std::move(newSource);
             transportB.setSource(readerB.get(), 0, nullptr, sourceSampleRate);
             trackB.setText(file.getFileName(), juce::dontSendNotification);
+            detectedBpmB = detectedBpm;
+            bpmLabelB.setText(detectedBpmB > 0.0
+                ? "BPM: " + juce::String(detectedBpmB, 1) + "  |  ACTUAL: " +
+                    juce::String(detectedBpmB * (1.0 + pitchB.getValue() / 100.0), 1)
+                : "BPM: no detectado", juce::dontSendNotification);
             waveformB.setAudio(decodedAudio, static_cast<double>(decodedSamples) / sourceSampleRate);
             waveformB.setPlayhead(0.0);
             playB.setButtonText("PLAY");
