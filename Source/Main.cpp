@@ -14,7 +14,9 @@ public:
     void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override
     {
         sampleRateHz = sampleRate;
-        inputBuffer.setSize(2, juce::jmax(1024, samplesPerBlockExpected), false, true, true);
+        inputBuffer.setSize(2, juce::jmax(8192, samplesPerBlockExpected), false, true, true);
+        interleavedInput.resize(static_cast<size_t>(inputBuffer.getNumSamples()) * 2);
+        interleavedOutput.resize(32768);
         processor.clear();
         processor.setSampleRate(static_cast<unsigned int>(sampleRateHz));
         processor.setChannels(2);
@@ -45,7 +47,8 @@ public:
         const bool keepKey = preservePitch.load();
         if (percent != appliedPercent || keepKey != appliedPreserveKey)
         {
-            processor.clear();
+            // Apply tempo/rate changes at the audio callback boundary without flushing
+            // the time-stretch FIFO, avoiding dropouts while the pitch fader moves.
             if (keepKey)
             {
                 processor.setRateChange(0.0);
@@ -69,13 +72,12 @@ public:
             if (available > 0)
             {
                 const int wanted = juce::jmin(info.numSamples - received, available);
-                std::vector<soundtouch::SAMPLETYPE> output(static_cast<size_t>(wanted) * 2);
-                const unsigned int got = processor.receiveSamples(output.data(), static_cast<unsigned int>(wanted));
+                const unsigned int got = processor.receiveSamples(interleavedOutput.data(), static_cast<unsigned int>(wanted));
                 for (int i = 0; i < static_cast<int>(got); ++i)
                 {
                     for (int ch = 0; ch < channels; ++ch)
                         info.buffer->setSample(ch, info.startSample + received + i,
-                                               output[static_cast<size_t>(i) * 2 + ch]);
+                                               interleavedOutput[static_cast<size_t>(i) * 2 + ch]);
                 }
                 received += static_cast<int>(got);
                 if (got > 0)
@@ -86,13 +88,12 @@ public:
             inputBuffer.clear();
             juce::AudioSourceChannelInfo inputInfo(&inputBuffer, 0, pull);
             transport.getNextAudioBlock(inputInfo);
-            std::vector<soundtouch::SAMPLETYPE> input(static_cast<size_t>(pull) * 2);
             for (int i = 0; i < pull; ++i)
             {
-                input[static_cast<size_t>(i) * 2] = inputBuffer.getSample(0, i);
-                input[static_cast<size_t>(i) * 2 + 1] = inputBuffer.getSample(juce::jmin(1, inputBuffer.getNumChannels() - 1), i);
+                interleavedInput[static_cast<size_t>(i) * 2] = inputBuffer.getSample(0, i);
+                interleavedInput[static_cast<size_t>(i) * 2 + 1] = inputBuffer.getSample(juce::jmin(1, inputBuffer.getNumChannels() - 1), i);
             }
-            processor.putSamples(input.data(), static_cast<unsigned int>(pull));
+            processor.putSamples(interleavedInput.data(), static_cast<unsigned int>(pull));
         }
 
         for (int ch = 0; ch < info.buffer->getNumChannels(); ++ch)
@@ -107,6 +108,7 @@ private:
     juce::AudioTransportSource& transport;
     soundtouch::SoundTouch processor;
     juce::AudioBuffer<float> inputBuffer;
+    std::vector<soundtouch::SAMPLETYPE> interleavedInput, interleavedOutput;
     std::atomic<double> requestedPercent{0.0};
     std::atomic<bool> preservePitch{true};
     double appliedPercent = 0.0;
