@@ -454,6 +454,52 @@ public:
         setupDeck(deckA, "DECK A", loadA, playA, stopA, trackA);
         setupDeck(deckB, "DECK B", loadB, playB, stopB, trackB);
 
+        auto setupPitchFader = [this](juce::Slider& slider)
+        {
+            slider.setSliderStyle(juce::Slider::LinearVertical);
+            slider.setRange(-8.0, 8.0, 0.1);
+            slider.setValue(0.0, juce::dontSendNotification);
+            slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+            slider.setColour(juce::Slider::trackColourId, juce::Colour(35, 210, 205));
+            slider.setColour(juce::Slider::thumbColourId, juce::Colours::white);
+            slider.setDoubleClickReturnValue(true, 0.0);
+            addAndMakeVisible(slider);
+        };
+        setupPitchFader(pitchA);
+        setupPitchFader(pitchB);
+
+        auto setupPitchLabel = [this](juce::Label& label, const juce::String& text)
+        {
+            label.setText(text, juce::dontSendNotification);
+            label.setJustificationType(juce::Justification::centred);
+            label.setColour(juce::Label::textColourId, juce::Colours::white);
+            label.setFont(juce::Font(11.0f, juce::Font::bold));
+            addAndMakeVisible(label);
+        };
+        setupPitchLabel(pitchLabelA, "PITCH");
+        setupPitchLabel(pitchLabelB, "PITCH");
+        setupPitchLabel(pitchValueA, "0.0%");
+        setupPitchLabel(pitchValueB, "0.0%");
+
+        pitchA.onValueChange = [this]
+        {
+            const double percent = pitchA.getValue();
+            const double ratio = 1.0 + percent / 100.0;
+            pitchRatioA.store(ratio);
+            pitchSourceA.setResamplingRatio(ratio);
+            pitchValueA.setText((percent > 0.0 ? "+" : "") + juce::String(percent, 1) + "%",
+                                juce::dontSendNotification);
+        };
+        pitchB.onValueChange = [this]
+        {
+            const double percent = pitchB.getValue();
+            const double ratio = 1.0 + percent / 100.0;
+            pitchRatioB.store(ratio);
+            pitchSourceB.setResamplingRatio(ratio);
+            pitchValueB.setText((percent > 0.0 ? "+" : "") + juce::String(percent, 1) + "%",
+                                juce::dontSendNotification);
+        };
+
         loadA.onClick = [this] { loadTrack(0); };
         loadB.onClick = [this] { loadTrack(1); };
         playA.onClick = [this] { startDeck(0); };
@@ -645,8 +691,10 @@ public:
 
     void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override
     {
-        transportA.prepareToPlay(samplesPerBlockExpected, sampleRate);
-        transportB.prepareToPlay(samplesPerBlockExpected, sampleRate);
+        pitchSourceA.prepareToPlay(samplesPerBlockExpected, sampleRate);
+        pitchSourceB.prepareToPlay(samplesPerBlockExpected, sampleRate);
+        pitchSourceA.setResamplingRatio(pitchRatioA.load());
+        pitchSourceB.setResamplingRatio(pitchRatioB.load());
         outputSampleRate = sampleRate;
         lowAlpha = 1.0f - std::exp(-2.0f * juce::MathConstants<float>::pi * 250.0f / static_cast<float>(sampleRate));
         midAlpha = 1.0f - std::exp(-2.0f * juce::MathConstants<float>::pi * 4000.0f / static_cast<float>(sampleRate));
@@ -672,8 +720,8 @@ public:
 
         juce::AudioSourceChannelInfo blockA(&scratchA, 0, info.numSamples);
         juce::AudioSourceChannelInfo blockB(&scratchB, 0, info.numSamples);
-        transportA.getNextAudioBlock(blockA);
-        transportB.getNextAudioBlock(blockB);
+        pitchSourceA.getNextAudioBlock(blockA);
+        pitchSourceB.getNextAudioBlock(blockB);
 
         // During a scratch gesture, render directly from the decoded track buffer.
         // This supports forward and reverse motion without repeatedly seeking the file decoder.
@@ -817,8 +865,8 @@ public:
 
     void releaseResources() override
     {
-        transportA.releaseResources();
-        transportB.releaseResources();
+        pitchSourceA.releaseResources();
+        pitchSourceB.releaseResources();
     }
 
     void paint(juce::Graphics& g) override
@@ -975,6 +1023,8 @@ public:
         const int transportGap = 14;
         const int transportStartA = margin + (deckW - (2 * transportWidth + transportGap)) / 2;
         const int transportStartB = deckBX + (deckW - (2 * transportWidth + transportGap)) / 2;
+        const int pitchX_A = margin + deckW - 62;
+        const int pitchX_B = deckBX + deckW - 62;
 
         trackA.setBounds(margin + 20, deckY + 48, deckW - 40, 28);
         timeA.setBounds(margin + 20, deckY + 78, deckW - 40, 20);
@@ -982,6 +1032,9 @@ public:
         cueA.setBounds(transportStartA, transportY, transportWidth, 36);
         playA.setBounds(transportStartA + transportWidth + transportGap, transportY, transportWidth, 36);
         jogWheelA.setBounds(centerX_A, jogY, 150, 150);
+        pitchLabelA.setBounds(pitchX_A - 7, jogY - 22, 54, 18);
+        pitchA.setBounds(pitchX_A, jogY, 36, 126);
+        pitchValueA.setBounds(pitchX_A - 9, jogY + 127, 54, 18);
         const int loopWidthA = 252;
         const int loopStartA = margin + (deckW - loopWidthA) / 2;
         loopInButtonA.setBounds(loopStartA, loopY, 76, 28);
@@ -999,6 +1052,9 @@ public:
         cueB.setBounds(transportStartB, transportY, transportWidth, 36);
         playB.setBounds(transportStartB + transportWidth + transportGap, transportY, transportWidth, 36);
         jogWheelB.setBounds(centerX_B, jogY, 150, 150);
+        pitchLabelB.setBounds(pitchX_B - 7, jogY - 22, 54, 18);
+        pitchB.setBounds(pitchX_B, jogY, 36, 126);
+        pitchValueB.setBounds(pitchX_B - 9, jogY + 127, 54, 18);
         const int loopStartB = deckBX + (deckW - loopWidthA) / 2;
         loopInButtonB.setBounds(loopStartB, loopY, 76, 28);
         loopOutButtonB.setBounds(loopStartB + 82, loopY, 76, 28);
@@ -1083,6 +1139,9 @@ public:
 private:
     juce::AudioFormatManager formatManager;
     juce::AudioTransportSource transportA, transportB;
+    juce::ResamplingAudioSource pitchSourceA{ &transportA, false, 2 };
+    juce::ResamplingAudioSource pitchSourceB{ &transportB, false, 2 };
+    std::atomic<double> pitchRatioA{ 1.0 }, pitchRatioB{ 1.0 };
     std::unique_ptr<juce::AudioFormatReaderSource> readerA, readerB;
     juce::AudioBuffer<float> scratchA, scratchB;
     std::shared_ptr<juce::AudioBuffer<float>> trackAudioA, trackAudioB;
@@ -1136,6 +1195,8 @@ private:
     juce::TextButton stopB{"STOP"};
     juce::Label trackA, trackB;
     juce::Slider crossfader, seekA, seekB, volumeA, volumeB;
+    juce::Slider pitchA, pitchB;
+    juce::Label pitchLabelA, pitchLabelB, pitchValueA, pitchValueB;
     juce::TextButton cueA{"CUE / INICIO"};
     juce::TextButton cueB{"CUE / INICIO"};
     juce::TextButton padModesA[4], padModesB[4];
@@ -1172,7 +1233,8 @@ private:
         const int sourceChannels = audio->getNumChannels();
         const int destinationChannels = destination.getNumChannels();
         const int totalSamples = audio->getNumSamples();
-        const double increment = speed * sampleRate / juce::jmax(1.0, outputSampleRate);
+        const double pitchRatio = deckNumber == 0 ? pitchRatioA.load() : pitchRatioB.load();
+        const double increment = speed * pitchRatio * sampleRate / juce::jmax(1.0, outputSampleRate);
 
         for (int i = 0; i < numSamples; ++i)
         {
