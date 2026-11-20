@@ -66,7 +66,7 @@ public:
         const int channels = juce::jmin(2, info.buffer->getNumChannels());
         int received = 0;
         int attempts = 0;
-        while (received < info.numSamples && attempts++ < 8)
+        while (received < info.numSamples && attempts++ < 12)
         {
             const int available = static_cast<int>(processor.numSamples());
             if (available > 0)
@@ -84,7 +84,7 @@ public:
                     continue;
             }
 
-            const int pull = juce::jmin(inputBuffer.getNumSamples(), juce::jmax(512, info.numSamples - received));
+            const int pull = juce::jmin(inputBuffer.getNumSamples(), juce::jmax(2048, info.numSamples - received));
             inputBuffer.clear();
             juce::AudioSourceChannelInfo inputInfo(&inputBuffer, 0, pull);
             transport.getNextAudioBlock(inputInfo);
