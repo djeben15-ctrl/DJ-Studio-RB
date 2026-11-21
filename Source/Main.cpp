@@ -20,9 +20,11 @@ public:
         processor.clear();
         processor.setSampleRate(static_cast<unsigned int>(sampleRateHz));
         processor.setChannels(2);
-        processor.setSetting(SETTING_USE_QUICKSEEK, 0);
+        // Quick seek lowers CPU usage on older Intel Macs while retaining good DJ playback quality.
+        processor.setSetting(SETTING_USE_QUICKSEEK, 1);
         processor.setTempoChange(0.0);
         processor.setRateChange(0.0);
+        processorActive = false;
         transport.prepareToPlay(samplesPerBlockExpected, sampleRate);
     }
 
@@ -30,6 +32,7 @@ public:
     {
         transport.releaseResources();
         processor.clear();
+        processorActive = false;
     }
 
     void setPitchPercent(double percent, bool preserveKey)
@@ -43,12 +46,63 @@ public:
         if (info.buffer == nullptr || info.numSamples <= 0)
             return;
 
+        info.clearActiveBufferRegion();
+        const int channels = juce::jmin(2, info.buffer->getNumChannels());
+
+        // Do not run a time-stretcher for a stopped deck. Both decks are called
+        // on every audio callback, so this avoids wasting CPU on silence.
+        if (!transport.isPlaying())
+        {
+            if (processorActive)
+            {
+                processor.clear();
+                processorActive = false;
+            }
+            return;
+        }
+
         const double percent = requestedPercent.load();
         const bool keepKey = preservePitch.load();
-        if (percent != appliedPercent || keepKey != appliedPreserveKey)
+
+        // Ignore tiny centre-fader jitter. At the centre, play the original
+        // decoded stream directly for the cleanest sound and lowest CPU load.
+        constexpr double pitchDeadband = 0.35;
+        const bool shouldStretch = std::abs(percent) >= pitchDeadband;
+
+        if (!shouldStretch)
         {
-            // Apply tempo/rate changes at the audio callback boundary without flushing
-            // the time-stretch FIFO, avoiding dropouts while the pitch fader moves.
+            if (processorActive)
+            {
+                processor.clear();
+                processorActive = false;
+            }
+
+            const int pull = juce::jmin(info.numSamples, inputBuffer.getNumSamples());
+            if (pull <= 0)
+                return;
+
+            inputBuffer.clear();
+            juce::AudioSourceChannelInfo sourceInfo(&inputBuffer, 0, pull);
+            transport.getNextAudioBlock(sourceInfo);
+
+            for (int ch = 0; ch < channels; ++ch)
+                for (int i = 0; i < pull; ++i)
+                    info.buffer->setSample(ch, info.startSample + i, inputBuffer.getSample(ch, i));
+            return;
+        }
+
+        if (!processorActive)
+        {
+            processor.clear();
+            processor.setTempoChange(keepKey ? percent : 0.0);
+            processor.setRateChange(keepKey ? 0.0 : percent);
+            appliedPercent = percent;
+            appliedPreserveKey = keepKey;
+            processorActive = true;
+        }
+        else if (percent != appliedPercent || keepKey != appliedPreserveKey)
+        {
+            // Update at the callback boundary without flushing the FIFO.
             if (keepKey)
             {
                 processor.setRateChange(0.0);
@@ -63,45 +117,58 @@ public:
             appliedPreserveKey = keepKey;
         }
 
-        const int channels = juce::jmin(2, info.buffer->getNumChannels());
         int received = 0;
-        int attempts = 0;
-        while (received < info.numSamples && attempts++ < 12)
+        const int availableBeforeInput = static_cast<int>(processor.numSamples());
+        if (availableBeforeInput > 0)
         {
-            const int available = static_cast<int>(processor.numSamples());
-            if (available > 0)
-            {
-                const int wanted = juce::jmin(info.numSamples - received, available);
-                const unsigned int got = processor.receiveSamples(interleavedOutput.data(), static_cast<unsigned int>(wanted));
-                for (int i = 0; i < static_cast<int>(got); ++i)
-                {
-                    for (int ch = 0; ch < channels; ++ch)
-                        info.buffer->setSample(ch, info.startSample + received + i,
-                                               interleavedOutput[static_cast<size_t>(i) * 2 + ch]);
-                }
-                received += static_cast<int>(got);
-                if (got > 0)
-                    continue;
-            }
-
-            const int pull = juce::jmin(inputBuffer.getNumSamples(), juce::jmax(2048, info.numSamples - received));
-            inputBuffer.clear();
-            juce::AudioSourceChannelInfo inputInfo(&inputBuffer, 0, pull);
-            transport.getNextAudioBlock(inputInfo);
-            for (int i = 0; i < pull; ++i)
-            {
-                interleavedInput[static_cast<size_t>(i) * 2] = inputBuffer.getSample(0, i);
-                interleavedInput[static_cast<size_t>(i) * 2 + 1] = inputBuffer.getSample(juce::jmin(1, inputBuffer.getNumChannels() - 1), i);
-            }
-            processor.putSamples(interleavedInput.data(), static_cast<unsigned int>(pull));
+            const int wanted = juce::jmin(info.numSamples, availableBeforeInput);
+            const unsigned int got = processor.receiveSamples(
+                interleavedOutput.data(), static_cast<unsigned int>(wanted));
+            for (int i = 0; i < static_cast<int>(got); ++i)
+                for (int ch = 0; ch < channels; ++ch)
+                    info.buffer->setSample(ch, info.startSample + i,
+                        interleavedOutput[static_cast<size_t>(i) * 2 + ch]);
+            received = static_cast<int>(got);
         }
 
-        for (int ch = 0; ch < info.buffer->getNumChannels(); ++ch)
-            if (ch >= channels)
-                info.buffer->clear(ch, info.startSample, info.numSamples);
+        // Feed at most one output block per callback. The old implementation
+        // could push up to 24,576 samples in one callback, starving the device
+        // and producing crackles on lower-powered Macs.
         if (received < info.numSamples)
-            for (int ch = 0; ch < channels; ++ch)
-                info.buffer->clear(ch, info.startSample + received, info.numSamples - received);
+        {
+            const int pull = juce::jmin(inputBuffer.getNumSamples(), info.numSamples - received);
+            if (pull > 0)
+            {
+                inputBuffer.clear();
+                juce::AudioSourceChannelInfo sourceInfo(&inputBuffer, 0, pull);
+                transport.getNextAudioBlock(sourceInfo);
+
+                for (int i = 0; i < pull; ++i)
+                {
+                    interleavedInput[static_cast<size_t>(i) * 2] = inputBuffer.getSample(0, i);
+                    interleavedInput[static_cast<size_t>(i) * 2 + 1] = inputBuffer.getSample(1, i);
+                }
+                processor.putSamples(interleavedInput.data(), static_cast<unsigned int>(pull));
+
+                const int availableAfterInput = static_cast<int>(processor.numSamples());
+                const int wanted = juce::jmin(info.numSamples - received, availableAfterInput);
+                if (wanted > 0)
+                {
+                    const unsigned int got = processor.receiveSamples(
+                        interleavedOutput.data(), static_cast<unsigned int>(wanted));
+                    for (int i = 0; i < static_cast<int>(got); ++i)
+                        for (int ch = 0; ch < channels; ++ch)
+                            info.buffer->setSample(ch, info.startSample + received + i,
+                                interleavedOutput[static_cast<size_t>(i) * 2 + ch]);
+                    received += static_cast<int>(got);
+                }
+            }
+        }
+
+        // Any samples not yet produced by SoundTouch remain silent rather than
+        // outputting uninitialised data or blocking the real-time audio thread.
+        for (int ch = channels; ch < info.buffer->getNumChannels(); ++ch)
+            info.buffer->clear(ch, info.startSample, info.numSamples);
     }
 
 private:
@@ -113,6 +180,7 @@ private:
     std::atomic<bool> preservePitch{true};
     double appliedPercent = 0.0;
     bool appliedPreserveKey = true;
+    bool processorActive = false;
     double sampleRateHz = 44100.0;
 };
 
@@ -592,7 +660,8 @@ public:
             range.setColour(juce::ComboBox::backgroundColourId, juce::Colour(30, 38, 48));
             range.setColour(juce::ComboBox::textColourId, juce::Colours::white);
             addAndMakeVisible(range);
-            keyLock.setButtonText("MASTER TEMPO");
+            keyLock.setButtonText("KEY LOCK");
+            keyLock.setTooltip("Mantiene la tonalidad al modificar el pitch (Master Tempo).");
             keyLock.setToggleState(true, juce::dontSendNotification);
             keyLock.setColour(juce::TextButton::buttonColourId, juce::Colour(35, 90, 90));
             keyLock.setColour(juce::TextButton::textColourOffId, juce::Colours::white);
@@ -1187,11 +1256,11 @@ public:
         cueA.setBounds(transportStartA, transportY, transportWidth, 36);
         playA.setBounds(transportStartA + transportWidth + transportGap, transportY, transportWidth, 36);
         jogWheelA.setBounds(centerX_A, jogY, 150, 150);
-        pitchLabelA.setBounds(pitchX_A - 7, jogY - 22, 54, 18);
+        pitchLabelA.setBounds(pitchX_A - 7, jogY - 42, 54, 18);
         pitchA.setBounds(pitchX_A, jogY, 36, 126);
         pitchValueA.setBounds(pitchX_A - 9, jogY + 127, 54, 18);
         pitchRangeA.setBounds(pitchX_A - 18, jogY + 151, 66, 24);
-        keyLockA.setBounds(pitchX_A - 28, jogY + 178, 88, 24);
+        keyLockA.setBounds(pitchX_A - 30, jogY - 21, 96, 20);
         bpmLabelA.setBounds(margin + 20, deckY + 24, deckW - 40, 22);
         const int loopWidthA = 252;
         const int loopStartA = margin + (deckW - loopWidthA) / 2;
@@ -1210,11 +1279,11 @@ public:
         cueB.setBounds(transportStartB, transportY, transportWidth, 36);
         playB.setBounds(transportStartB + transportWidth + transportGap, transportY, transportWidth, 36);
         jogWheelB.setBounds(centerX_B, jogY, 150, 150);
-        pitchLabelB.setBounds(pitchX_B - 7, jogY - 22, 54, 18);
+        pitchLabelB.setBounds(pitchX_B - 7, jogY - 42, 54, 18);
         pitchB.setBounds(pitchX_B, jogY, 36, 126);
         pitchValueB.setBounds(pitchX_B - 9, jogY + 127, 54, 18);
         pitchRangeB.setBounds(pitchX_B - 18, jogY + 151, 66, 24);
-        keyLockB.setBounds(pitchX_B - 28, jogY + 178, 88, 24);
+        keyLockB.setBounds(pitchX_B - 30, jogY - 21, 96, 20);
         bpmLabelB.setBounds(deckBX + 20, deckY + 24, deckW - 40, 22);
         const int loopStartB = deckBX + (deckW - loopWidthA) / 2;
         loopInButtonB.setBounds(loopStartB, loopY, 76, 28);
