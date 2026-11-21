@@ -1250,7 +1250,7 @@ public:
         const int pitchX_A = margin + deckW - 62;
         const int pitchX_B = deckBX + deckW - 62;
 
-        trackA.setBounds(margin + 20, deckY + 48, deckW - 40, 28);
+        trackA.setBounds(margin + 20, deckY + 48, deckW - 164, 28);
         timeA.setBounds(margin + 20, deckY + 78, deckW - 40, 20);
         seekA.setBounds(margin + 20, deckY + 102, deckW - 40, 22);
         cueA.setBounds(transportStartA, transportY, transportWidth, 36);
@@ -1259,9 +1259,9 @@ public:
         pitchLabelA.setBounds(pitchX_A - 7, jogY - 42, 54, 18);
         pitchA.setBounds(pitchX_A, jogY, 36, 126);
         pitchValueA.setBounds(pitchX_A - 9, jogY + 127, 54, 18);
-        pitchRangeA.setBounds(pitchX_A - 18, jogY + 151, 66, 24);
-        keyLockA.setBounds(pitchX_A - 30, jogY - 21, 96, 20);
-        bpmLabelA.setBounds(margin + 20, deckY + 24, deckW - 40, 22);
+        pitchRangeA.setBounds(margin + deckW - 130, deckY + 50, 108, 22);
+        keyLockA.setBounds(margin + deckW - 130, deckY + 23, 108, 24);
+        bpmLabelA.setBounds(margin + 20, deckY + 24, deckW - 164, 22);
         const int loopWidthA = 252;
         const int loopStartA = margin + (deckW - loopWidthA) / 2;
         loopInButtonA.setBounds(loopStartA, loopY, 76, 28);
@@ -1273,7 +1273,7 @@ public:
             hotCuePadsA[i].setBounds(innerLeftA + (i % 4) * (innerWidth / 4),
                                      padsY + (i / 4) * (padHeight + padGap), padColumnWidth, padHeight);
 
-        trackB.setBounds(deckBX + 20, deckY + 48, deckW - 40, 28);
+        trackB.setBounds(deckBX + 20, deckY + 48, deckW - 164, 28);
         timeB.setBounds(deckBX + 20, deckY + 78, deckW - 40, 20);
         seekB.setBounds(deckBX + 20, deckY + 102, deckW - 40, 22);
         cueB.setBounds(transportStartB, transportY, transportWidth, 36);
@@ -1282,9 +1282,9 @@ public:
         pitchLabelB.setBounds(pitchX_B - 7, jogY - 42, 54, 18);
         pitchB.setBounds(pitchX_B, jogY, 36, 126);
         pitchValueB.setBounds(pitchX_B - 9, jogY + 127, 54, 18);
-        pitchRangeB.setBounds(pitchX_B - 18, jogY + 151, 66, 24);
-        keyLockB.setBounds(pitchX_B - 30, jogY - 21, 96, 20);
-        bpmLabelB.setBounds(deckBX + 20, deckY + 24, deckW - 40, 22);
+        pitchRangeB.setBounds(deckBX + deckW - 130, deckY + 50, 108, 22);
+        keyLockB.setBounds(deckBX + deckW - 130, deckY + 23, 108, 24);
+        bpmLabelB.setBounds(deckBX + 20, deckY + 24, deckW - 164, 22);
         const int loopStartB = deckBX + (deckW - loopWidthA) / 2;
         loopInButtonB.setBounds(loopStartB, loopY, 76, 28);
         loopOutButtonB.setBounds(loopStartB + 82, loopY, 76, 28);
