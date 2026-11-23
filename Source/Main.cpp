@@ -50,6 +50,9 @@ public:
         appliedKeyLock = preservePitch.load();
         lastHandledReset = resetRequest.load();
         resetAck.store(lastHandledReset);
+        edgeFadeRemaining = 0;
+        previousOutput[0] = previousOutput[1] = 0.0f;
+        underrunCount.store(0);
         startThread();
     }
 
@@ -74,6 +77,8 @@ public:
         resetRequest.fetch_add(1);
         notify();
     }
+
+    int getUnderrunCount() const noexcept { return underrunCount.load(); }
 
     void getNextAudioBlock(const juce::AudioSourceChannelInfo& info) override
     {
@@ -101,6 +106,8 @@ public:
         }
 
         const int available = juce::jmin(info.numSamples, outputFifo.getNumReady());
+        if (available < info.numSamples)
+            underrunCount.fetch_add(1);
         if (available > 0)
         {
             int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
@@ -130,10 +137,22 @@ private:
     std::atomic<double> requestedPercent{0.0};
     std::atomic<bool> preservePitch{true};
     std::atomic<unsigned int> resetRequest{0}, resetAck{0};
+    std::atomic<int> underrunCount{0};
     unsigned int lastHandledReset = 0, lastConsumedReset = 0;
-    int currentMode = -1; // -1 = stopped/reset, 1 = continuous SoundTouch pipeline
+    int currentMode = -1; // 0 = clean/resampled, 1 = preserve tonalidad
     double appliedPercent = 0.0;
     bool appliedKeyLock = true;
+    static constexpr int fadeLength = 512;
+    int edgeFadeRemaining = 0;
+    float previousOutput[2] = {0.0f, 0.0f};
+
+    float blendTransition(int channel, float sample, int fadeRemaining)
+    {
+        if (fadeRemaining <= 0)
+            return sample;
+        const float mix = 1.0f - static_cast<float>(fadeRemaining) / fadeLength;
+        return previousOutput[channel] * (1.0f - mix) + sample * mix;
+    }
 
     void discardQueuedOutput()
     {
@@ -146,17 +165,29 @@ private:
         }
     }
 
+    // Assemble the next audio block on the background thread. Smooth the
+    // first 512 samples when the playback DSP path changes to avoid a click.
     void queueAudio(const juce::AudioBuffer<float>& block, int count)
     {
         if (count <= 0)
             return;
         const int amount = juce::jmin(count, outputFifo.getFreeSpace());
+        if (amount <= 0)
+            return;
         int s1 = 0, n1 = 0, s2 = 0, n2 = 0;
         outputFifo.prepareToWrite(amount, s1, n1, s2, n2);
-        for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < amount; ++i)
         {
-            if (n1 > 0) ringBuffer.copyFrom(ch, s1, block, ch, 0, n1);
-            if (n2 > 0) ringBuffer.copyFrom(ch, s2, block, ch, n1, n2);
+            const int destination = i < n1 ? s1 + i : s2 + i - n1;
+            const int fading = edgeFadeRemaining;
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                const float v = blendTransition(ch, block.getSample(ch, i), fading);
+                ringBuffer.setSample(ch, destination, v);
+                previousOutput[ch] = v;
+            }
+            if (edgeFadeRemaining > 0)
+                --edgeFadeRemaining;
         }
         outputFifo.finishedWrite(n1 + n2);
     }
@@ -168,24 +199,39 @@ private:
             return;
         int s1 = 0, n1 = 0, s2 = 0, n2 = 0;
         outputFifo.prepareToWrite(amount, s1, n1, s2, n2);
-        for (int i = 0; i < n1; ++i)
+        for (int i = 0; i < amount; ++i)
+        {
+            const int destination = i < n1 ? s1 + i : s2 + i - n1;
+            const int fading = edgeFadeRemaining;
             for (int ch = 0; ch < 2; ++ch)
-                ringBuffer.setSample(ch, s1 + i, block[(i * 2) + ch]);
-        for (int i = 0; i < n2; ++i)
-            for (int ch = 0; ch < 2; ++ch)
-                ringBuffer.setSample(ch, s2 + i, block[((n1 + i) * 2) + ch]);
+            {
+                const float v = blendTransition(ch, block[i * 2 + ch], fading);
+                ringBuffer.setSample(ch, destination, v);
+                previousOutput[ch] = v;
+            }
+            if (edgeFadeRemaining > 0)
+                --edgeFadeRemaining;
+        }
         outputFifo.finishedWrite(n1 + n2);
     }
 
-    void renderOnce(int mode, double percent)
+    void renderOnce(int mode)
     {
-        juce::ignoreUnused(mode, percent);
+        if (mode == 0)
+        {
+            // Normal speed and pitch changes without KEY LOCK are rendered
+            // using JUCE interpolation, never SoundTouch.
+            juce::AudioSourceChannelInfo block(&inputBuffer, 0, 2048);
+            resampler.getNextAudioBlock(block);
+            queueAudio(inputBuffer, 2048);
+            return;
+        }
 
-        // SoundTouch is used for both modes, even at the centre position.
-        // Therefore changing pitch or toggling Key Lock never swaps decoders.
-        // Its processing happens only on the worker, not the audio callback.
+        // Preserve musical key only when Key Lock AND a pitch change are active.
+        // The worker may need several blocks of input before SoundTouch returns
+        // its first batch; the already-buffered audio bridges that transition.
         int ready = static_cast<int>(processor.numSamples());
-        for (int tries = 0; ready == 0 && tries < 3; ++tries)
+        for (int tries = 0; ready == 0 && tries < 4; ++tries)
         {
             juce::AudioSourceChannelInfo block(&inputBuffer, 0, 4096);
             resampler.getNextAudioBlock(block);
@@ -238,30 +284,44 @@ private:
 
             const double pitch = requestedPercent.load();
             const bool locked = preservePitch.load();
-            // Keep SoundTouch running continuously, including at 0% pitch.
-            // Previously the application changed from the direct/resampler path
-            // to SoundTouch when the user first touched PITCH, resetting the
-            // processing pipeline and causing the audible dropout. KEY LOCK
-            // activation must NEVER change the audio source or clear its FIFO.
-            if (currentMode != 1)
+            // At 0% use the original clean audio, avoiding the audible
+            // chirping SoundTouch can introduce when it needlessly processes
+            // unmodified music. With Key Lock OFF use JUCE resampling.
+            const int mode = (locked && std::abs(pitch) >= 0.05) ? 1 : 0;
+            if (currentMode != mode)
             {
-                currentMode = 1;
-                processor.clear();
-                resampler.setResamplingRatio(1.0);
-                processor.setRateChange(locked ? 0.0 : pitch);
-                processor.setTempoChange(locked ? pitch : 0.0);
+                currentMode = mode;
+                edgeFadeRemaining = fadeLength;
+                if (mode == 1)
+                {
+                    processor.clear();
+                    resampler.setResamplingRatio(1.0);
+                    processor.setRateChange(0.0);
+                    processor.setTempoChange(pitch);
+                }
+                else
+                {
+                    processor.clear();
+                    resampler.setResamplingRatio(1.0 + pitch / 100.0);
+                }
                 appliedPercent = pitch;
                 appliedKeyLock = locked;
             }
             else if (std::abs(pitch - appliedPercent) >= 0.05 || appliedKeyLock != locked)
             {
-                processor.setRateChange(locked ? 0.0 : pitch);
-                processor.setTempoChange(locked ? pitch : 0.0);
+                if (mode == 1)
+                {
+                    processor.setRateChange(0.0);
+                    processor.setTempoChange(pitch);
+                }
+                else
+                {
+                    resampler.setResamplingRatio(1.0 + pitch / 100.0);
+                }
                 appliedPercent = pitch;
                 appliedKeyLock = locked;
             }
-
-            renderOnce(1, pitch);
+            renderOnce(mode);
         }
     }
 };
