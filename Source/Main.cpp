@@ -13,18 +13,18 @@ public:
 
     void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override
     {
-        sampleRateHz = sampleRate;
-        inputBuffer.setSize(2, juce::jmax(8192, samplesPerBlockExpected), false, true, true);
-        interleavedInput.resize(static_cast<size_t>(inputBuffer.getNumSamples()) * 2);
-        interleavedOutput.resize(32768);
+        const int capacity = juce::jmax(8192, samplesPerBlockExpected);
+        inputBuffer.setSize(2, capacity, false, true, true);
+        interleavedInput.resize(static_cast<size_t>(capacity) * 2);
+        interleavedOutput.resize(static_cast<size_t>(capacity) * 2);
         processor.clear();
-        processor.setSampleRate(static_cast<unsigned int>(sampleRateHz));
+        processor.setSampleRate(static_cast<unsigned int>(sampleRate));
         processor.setChannels(2);
-        // Quick seek lowers CPU usage on older Intel Macs while retaining good DJ playback quality.
         processor.setSetting(SETTING_USE_QUICKSEEK, 1);
         processor.setTempoChange(0.0);
         processor.setRateChange(0.0);
         processorActive = false;
+        fractionalInputSamples = 0.0;
         transport.prepareToPlay(samplesPerBlockExpected, sampleRate);
     }
 
@@ -46,142 +46,128 @@ public:
         if (info.buffer == nullptr || info.numSamples <= 0)
             return;
 
-        info.clearActiveBufferRegion();
-        const int channels = juce::jmin(2, info.buffer->getNumChannels());
-
-        // Do not run a time-stretcher for a stopped deck. Both decks are called
-        // on every audio callback, so this avoids wasting CPU on silence.
+        // A paused deck should not keep burning CPU in the time-stretcher.
         if (!transport.isPlaying())
         {
+            info.clearActiveBufferRegion();
             if (processorActive)
             {
                 processor.clear();
                 processorActive = false;
+                fractionalInputSamples = 0.0;
             }
             return;
         }
 
         const double percent = requestedPercent.load();
         const bool keepKey = preservePitch.load();
-
-        // Ignore tiny centre-fader jitter. At the centre, play the original
-        // decoded stream directly for the cleanest sound and lowest CPU load.
-        constexpr double pitchDeadband = 0.35;
-        const bool shouldStretch = std::abs(percent) >= pitchDeadband;
-
-        if (!shouldStretch)
+        // Pure, unprocessed audio when the deck starts at the neutral pitch.
+        if (!processorActive && std::abs(percent) < 0.05)
         {
-            if (processorActive)
-            {
-                processor.clear();
-                processorActive = false;
-            }
-
-            const int pull = juce::jmin(info.numSamples, inputBuffer.getNumSamples());
-            if (pull <= 0)
-                return;
-
-            inputBuffer.clear();
-            juce::AudioSourceChannelInfo sourceInfo(&inputBuffer, 0, pull);
-            transport.getNextAudioBlock(sourceInfo);
-
-            for (int ch = 0; ch < channels; ++ch)
-                for (int i = 0; i < pull; ++i)
-                    info.buffer->setSample(ch, info.startSample + i, inputBuffer.getSample(ch, i));
+            transport.getNextAudioBlock(info);
             return;
         }
 
+        info.clearActiveBufferRegion();
+        const int channels = juce::jmin(2, info.buffer->getNumChannels());
         if (!processorActive)
         {
             processor.clear();
-            processor.setTempoChange(keepKey ? percent : 0.0);
             processor.setRateChange(keepKey ? 0.0 : percent);
+            processor.setTempoChange(keepKey ? percent : 0.0);
             appliedPercent = percent;
             appliedPreserveKey = keepKey;
             processorActive = true;
+            fractionalInputSamples = 0.0;
+
+            // SoundTouch needs several thousand samples of look-ahead before
+            // it can output its first block. Prime only once, at transition
+            // from direct playback to pitch-controlled playback.
+            const int latency = juce::jmax(0, processor.getSetting(SETTING_INITIAL_LATENCY));
+            const int outputBatch = juce::jmax(512, processor.getSetting(SETTING_NOMINAL_OUTPUT_SEQUENCE));
+            int toPrime = juce::jmin(16384, latency + juce::jmax(info.numSamples * 2, outputBatch / 2));
+            while (toPrime > 0)
+            {
+                const int chunk = juce::jmin(toPrime, inputBuffer.getNumSamples());
+                feedInput(chunk);
+                toPrime -= chunk;
+            }
         }
-        else if (percent != appliedPercent || keepKey != appliedPreserveKey)
+        else if (std::abs(percent - appliedPercent) >= 0.05 || keepKey != appliedPreserveKey)
         {
-            // Update at the callback boundary without flushing the FIFO.
-            if (keepKey)
-            {
-                processor.setRateChange(0.0);
-                processor.setTempoChange(percent);
-            }
-            else
-            {
-                processor.setTempoChange(0.0);
-                processor.setRateChange(percent);
-            }
+            // Do not flush the FIFO during live pitch moves: flushed frames
+            // were the main reason the music stopped briefly at each change.
+            processor.setRateChange(keepKey ? 0.0 : percent);
+            processor.setTempoChange(keepKey ? percent : 0.0);
             appliedPercent = percent;
             appliedPreserveKey = keepKey;
         }
 
-        int received = 0;
-        const int availableBeforeInput = static_cast<int>(processor.numSamples());
-        if (availableBeforeInput > 0)
+        // Tempo +16% consumes about 1.16 input frames per output frame.
+        // The previous implementation fed only the number of MISSING output
+        // frames. That gradually starved the processor and created audible
+        // dropouts. Feed an input budget every callback, even with output queued.
+        const double outputPerInput = juce::jmax(0.01, processor.getInputOutputSampleRatio());
+        fractionalInputSamples += static_cast<double>(info.numSamples) / outputPerInput;
+        int inputBudget = static_cast<int>(fractionalInputSamples);
+        fractionalInputSamples -= static_cast<double>(inputBudget);
+        while (inputBudget > 0)
         {
-            const int wanted = juce::jmin(info.numSamples, availableBeforeInput);
+            const int chunk = juce::jmin(inputBudget, inputBuffer.getNumSamples());
+            feedInput(chunk);
+            inputBudget -= chunk;
+        }
+
+        // Processing is block-based, so keep output FIFO ahead of the device
+        // callback. This normally needs no extra feeding after the first block.
+        const int outputTarget = info.numSamples + juce::jmin(512, info.numSamples);
+        for (int attempt = 0; attempt < 4 &&
+             static_cast<int>(processor.numSamples()) < outputTarget; ++attempt)
+        {
+            const int inputSequence = juce::jmax(512, processor.getSetting(SETTING_NOMINAL_INPUT_SEQUENCE));
+            const int chunk = juce::jmin(inputSequence, inputBuffer.getNumSamples());
+            feedInput(chunk);
+        }
+
+        const int wanted = juce::jmin(info.numSamples, static_cast<int>(processor.numSamples()));
+        if (wanted > 0)
+        {
+            // receiveSamples can return fewer frames than requested.
             const unsigned int got = processor.receiveSamples(
                 interleavedOutput.data(), static_cast<unsigned int>(wanted));
             for (int i = 0; i < static_cast<int>(got); ++i)
                 for (int ch = 0; ch < channels; ++ch)
                     info.buffer->setSample(ch, info.startSample + i,
                         interleavedOutput[static_cast<size_t>(i) * 2 + ch]);
-            received = static_cast<int>(got);
         }
-
-        // Feed at most one output block per callback. The old implementation
-        // could push up to 24,576 samples in one callback, starving the device
-        // and producing crackles on lower-powered Macs.
-        if (received < info.numSamples)
-        {
-            const int pull = juce::jmin(inputBuffer.getNumSamples(), info.numSamples - received);
-            if (pull > 0)
-            {
-                inputBuffer.clear();
-                juce::AudioSourceChannelInfo sourceInfo(&inputBuffer, 0, pull);
-                transport.getNextAudioBlock(sourceInfo);
-
-                for (int i = 0; i < pull; ++i)
-                {
-                    interleavedInput[static_cast<size_t>(i) * 2] = inputBuffer.getSample(0, i);
-                    interleavedInput[static_cast<size_t>(i) * 2 + 1] = inputBuffer.getSample(1, i);
-                }
-                processor.putSamples(interleavedInput.data(), static_cast<unsigned int>(pull));
-
-                const int availableAfterInput = static_cast<int>(processor.numSamples());
-                const int wanted = juce::jmin(info.numSamples - received, availableAfterInput);
-                if (wanted > 0)
-                {
-                    const unsigned int got = processor.receiveSamples(
-                        interleavedOutput.data(), static_cast<unsigned int>(wanted));
-                    for (int i = 0; i < static_cast<int>(got); ++i)
-                        for (int ch = 0; ch < channels; ++ch)
-                            info.buffer->setSample(ch, info.startSample + received + i,
-                                interleavedOutput[static_cast<size_t>(i) * 2 + ch]);
-                    received += static_cast<int>(got);
-                }
-            }
-        }
-
-        // Any samples not yet produced by SoundTouch remain silent rather than
-        // outputting uninitialised data or blocking the real-time audio thread.
-        for (int ch = channels; ch < info.buffer->getNumChannels(); ++ch)
-            info.buffer->clear(ch, info.startSample, info.numSamples);
+        // Unavailable samples remain silent, never uninitialised or noise.
     }
 
 private:
+    void feedInput(int numSamples)
+    {
+        if (numSamples <= 0)
+            return;
+        juce::AudioSourceChannelInfo sourceBlock(&inputBuffer, 0, numSamples);
+        transport.getNextAudioBlock(sourceBlock);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            interleavedInput[static_cast<size_t>(i) * 2] = inputBuffer.getSample(0, i);
+            interleavedInput[static_cast<size_t>(i) * 2 + 1] = inputBuffer.getSample(1, i);
+        }
+        processor.putSamples(interleavedInput.data(), static_cast<unsigned int>(numSamples));
+    }
+
     juce::AudioTransportSource& transport;
     soundtouch::SoundTouch processor;
     juce::AudioBuffer<float> inputBuffer;
     std::vector<soundtouch::SAMPLETYPE> interleavedInput, interleavedOutput;
     std::atomic<double> requestedPercent{0.0};
     std::atomic<bool> preservePitch{true};
+    double fractionalInputSamples = 0.0;
     double appliedPercent = 0.0;
     bool appliedPreserveKey = true;
     bool processorActive = false;
-    double sampleRateHz = 44100.0;
 };
 
 class VirtualJogWheel : public juce::Component
