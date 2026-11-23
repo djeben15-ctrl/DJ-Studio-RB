@@ -47,6 +47,7 @@ public:
         processor.setRateChange(0.0);
         currentMode = -1;
         appliedPercent = 0.0;
+        appliedKeyLock = preservePitch.load();
         lastHandledReset = resetRequest.load();
         resetAck.store(lastHandledReset);
         startThread();
@@ -119,7 +120,7 @@ public:
 
 private:
     static constexpr int fifoCapacity = 131072;
-    static constexpr int targetBuffered = 32768;
+    static constexpr int targetBuffered = 16384;
     juce::AudioTransportSource& transport;
     juce::ResamplingAudioSource resampler;
     soundtouch::SoundTouch processor;
@@ -130,7 +131,7 @@ private:
     std::atomic<bool> preservePitch{true};
     std::atomic<unsigned int> resetRequest{0}, resetAck{0};
     unsigned int lastHandledReset = 0, lastConsumedReset = 0;
-    int currentMode = -1; // 0 = resample, 1 = preserve key
+    int currentMode = -1; // -1 = stopped/reset, 1 = continuous SoundTouch pipeline
     double appliedPercent = 0.0;
     bool appliedKeyLock = true;
 
@@ -178,17 +179,11 @@ private:
 
     void renderOnce(int mode, double percent)
     {
-        if (mode == 0)
-        {
-            // Rate changes are handled by an efficient continuous resampler.
-            juce::AudioSourceChannelInfo block(&inputBuffer, 0, 2048);
-            resampler.getNextAudioBlock(block);
-            queueAudio(inputBuffer, 2048);
-            return;
-        }
+        juce::ignoreUnused(mode, percent);
 
-        // SoundTouch emits samples in batches. Collect the output on the worker,
-        // never inside the time-critical callback.
+        // SoundTouch is used for both modes, even at the centre position.
+        // Therefore changing pitch or toggling Key Lock never swaps decoders.
+        // Its processing happens only on the worker, not the audio callback.
         int ready = static_cast<int>(processor.numSamples());
         for (int tries = 0; ready == 0 && tries < 3; ++tries)
         {
@@ -243,42 +238,30 @@ private:
 
             const double pitch = requestedPercent.load();
             const bool locked = preservePitch.load();
-            // A single SoundTouch pipeline handles both rate-only (Key Lock OFF)
-            // and pitch-preserving tempo (Key Lock ON). Switching the toggle
-            // only changes DSP parameters; it no longer destroys/re-primes
-            // the audio FIFO, which caused silence when Key Lock was enabled.
-            // Once activated, retain the processor through 0% movements to
-            // prevent repeated resets while the pitch fader is moving.
-            const int mode = (currentMode == 1 || std::abs(pitch) >= 0.05) ? 1 : 0;
-            if (mode != currentMode)
+            // Keep SoundTouch running continuously, including at 0% pitch.
+            // Previously the application changed from the direct/resampler path
+            // to SoundTouch when the user first touched PITCH, resetting the
+            // processing pipeline and causing the audible dropout. KEY LOCK
+            // activation must NEVER change the audio source or clear its FIFO.
+            if (currentMode != 1)
             {
-                currentMode = mode;
-                if (mode == 1)
-                {
-                    processor.clear();
-                    resampler.setResamplingRatio(1.0);
-                    processor.setRateChange(locked ? 0.0 : pitch);
-                    processor.setTempoChange(locked ? pitch : 0.0);
-                }
-                else
-                    resampler.setResamplingRatio(1.0);
+                currentMode = 1;
+                processor.clear();
+                resampler.setResamplingRatio(1.0);
+                processor.setRateChange(locked ? 0.0 : pitch);
+                processor.setTempoChange(locked ? pitch : 0.0);
                 appliedPercent = pitch;
                 appliedKeyLock = locked;
             }
             else if (std::abs(pitch - appliedPercent) >= 0.05 || appliedKeyLock != locked)
             {
-                if (mode == 1)
-                {
-                    processor.setRateChange(locked ? 0.0 : pitch);
-                    processor.setTempoChange(locked ? pitch : 0.0);
-                }
-                else
-                    resampler.setResamplingRatio(1.0);
+                processor.setRateChange(locked ? 0.0 : pitch);
+                processor.setTempoChange(locked ? pitch : 0.0);
                 appliedPercent = pitch;
                 appliedKeyLock = locked;
             }
 
-            renderOnce(mode, pitch);
+            renderOnce(1, pitch);
         }
     }
 };
