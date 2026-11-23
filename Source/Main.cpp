@@ -118,8 +118,8 @@ public:
     }
 
 private:
-    static constexpr int fifoCapacity = 65536;
-    static constexpr int targetBuffered = 8192;
+    static constexpr int fifoCapacity = 131072;
+    static constexpr int targetBuffered = 32768;
     juce::AudioTransportSource& transport;
     juce::ResamplingAudioSource resampler;
     soundtouch::SoundTouch processor;
@@ -132,6 +132,7 @@ private:
     unsigned int lastHandledReset = 0, lastConsumedReset = 0;
     int currentMode = -1; // 0 = resample, 1 = preserve key
     double appliedPercent = 0.0;
+    bool appliedKeyLock = true;
 
     void discardQueuedOutput()
     {
@@ -242,7 +243,13 @@ private:
 
             const double pitch = requestedPercent.load();
             const bool locked = preservePitch.load();
-            const int mode = (locked && std::abs(pitch) >= 0.05) ? 1 : 0;
+            // A single SoundTouch pipeline handles both rate-only (Key Lock OFF)
+            // and pitch-preserving tempo (Key Lock ON). Switching the toggle
+            // only changes DSP parameters; it no longer destroys/re-primes
+            // the audio FIFO, which caused silence when Key Lock was enabled.
+            // Once activated, retain the processor through 0% movements to
+            // prevent repeated resets while the pitch fader is moving.
+            const int mode = (currentMode == 1 || std::abs(pitch) >= 0.05) ? 1 : 0;
             if (mode != currentMode)
             {
                 currentMode = mode;
@@ -250,20 +257,25 @@ private:
                 {
                     processor.clear();
                     resampler.setResamplingRatio(1.0);
-                    processor.setRateChange(0.0);
-                    processor.setTempoChange(pitch);
+                    processor.setRateChange(locked ? 0.0 : pitch);
+                    processor.setTempoChange(locked ? pitch : 0.0);
                 }
                 else
-                    resampler.setResamplingRatio(1.0 + pitch / 100.0);
+                    resampler.setResamplingRatio(1.0);
                 appliedPercent = pitch;
+                appliedKeyLock = locked;
             }
-            else if (std::abs(pitch - appliedPercent) >= 0.05)
+            else if (std::abs(pitch - appliedPercent) >= 0.05 || appliedKeyLock != locked)
             {
                 if (mode == 1)
-                    processor.setTempoChange(pitch);
+                {
+                    processor.setRateChange(locked ? 0.0 : pitch);
+                    processor.setTempoChange(locked ? pitch : 0.0);
+                }
                 else
-                    resampler.setResamplingRatio(1.0 + pitch / 100.0);
+                    resampler.setResamplingRatio(1.0);
                 appliedPercent = pitch;
+                appliedKeyLock = locked;
             }
 
             renderOnce(mode, pitch);
