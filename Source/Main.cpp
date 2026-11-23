@@ -6,39 +6,72 @@
 #include <limits>
 #include <vector>
 
-class PitchTempoSource : public juce::AudioSource
+
+/**
+ * The audio-device callback must never run SoundTouch or decode MP3s.
+ * An independent worker per deck maintains an output FIFO. The callback
+ * only copies already-rendered stereo frames, avoiding realtime stalls.
+ *
+ * KEY LOCK off: JUCE resampling (continuous tempo with changing pitch).
+ * KEY LOCK on: SoundTouch time stretching (tempo changes, stable key).
+ */
+class PitchTempoSource : public juce::AudioSource, private juce::Thread
 {
 public:
-    explicit PitchTempoSource(juce::AudioTransportSource& source) : transport(source) {}
+    explicit PitchTempoSource(juce::AudioTransportSource& source)
+        : juce::Thread("DJ Studio RB pitch renderer"),
+          transport(source), resampler(&source, false, 2), outputFifo(fifoCapacity)
+    {
+    }
+
+    ~PitchTempoSource() override
+    {
+        stopThread(3000);
+    }
 
     void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override
     {
-        const int capacity = juce::jmax(8192, samplesPerBlockExpected);
-        inputBuffer.setSize(2, capacity, false, true, true);
-        interleavedInput.resize(static_cast<size_t>(capacity) * 2);
-        interleavedOutput.resize(static_cast<size_t>(capacity) * 2);
+        stopThread(3000);
+        outputFifo.reset();
+        ringBuffer.setSize(2, fifoCapacity, false, true, true);
+        inputBuffer.setSize(2, 4096, false, true, true);
+        interleavedInput.resize(4096 * 2);
+        interleavedOutput.resize(4096 * 2);
+        resampler.setResamplingRatio(1.0);
+        resampler.prepareToPlay(juce::jmax(2048, samplesPerBlockExpected), sampleRate);
         processor.clear();
-        processor.setSampleRate(static_cast<unsigned int>(sampleRate));
         processor.setChannels(2);
+        processor.setSampleRate(static_cast<unsigned int>(sampleRate));
         processor.setSetting(SETTING_USE_QUICKSEEK, 1);
         processor.setTempoChange(0.0);
         processor.setRateChange(0.0);
-        processorActive = false;
-        fractionalInputSamples = 0.0;
-        transport.prepareToPlay(samplesPerBlockExpected, sampleRate);
+        currentMode = -1;
+        appliedPercent = 0.0;
+        lastHandledReset = resetRequest.load();
+        resetAck.store(lastHandledReset);
+        startThread();
     }
 
     void releaseResources() override
     {
-        transport.releaseResources();
+        stopThread(3000);
+        outputFifo.reset();
         processor.clear();
-        processorActive = false;
+        resampler.releaseResources();
     }
 
     void setPitchPercent(double percent, bool preserveKey)
     {
         requestedPercent.store(juce::jlimit(-16.0, 16.0, percent));
         preservePitch.store(preserveKey);
+        notify();
+    }
+
+    // Call after a track load, cue, jump, loop or jog seek.
+    void resetStream()
+    {
+        resetRequest.fetch_add(1);
+        notify();
     }
 
     void getNextAudioBlock(const juce::AudioSourceChannelInfo& info) override
@@ -46,128 +79,196 @@ public:
         if (info.buffer == nullptr || info.numSamples <= 0)
             return;
 
-        // A paused deck should not keep burning CPU in the time-stretcher.
+        info.clearActiveBufferRegion();
         if (!transport.isPlaying())
         {
-            info.clearActiveBufferRegion();
-            if (processorActive)
-            {
-                processor.clear();
-                processorActive = false;
-                fractionalInputSamples = 0.0;
-            }
+            discardQueuedOutput();
+            notify();
             return;
         }
 
-        const double percent = requestedPercent.load();
-        const bool keepKey = preservePitch.load();
-        // Pure, unprocessed audio when the deck starts at the neutral pitch.
-        if (!processorActive && std::abs(percent) < 0.05)
+        const auto desiredReset = resetRequest.load();
+        if (desiredReset != lastConsumedReset)
         {
-            transport.getNextAudioBlock(info);
+            discardQueuedOutput();
+            lastConsumedReset = desiredReset;
+        }
+        if (resetAck.load() != desiredReset)
+        {
+            notify();
             return;
         }
 
-        info.clearActiveBufferRegion();
-        const int channels = juce::jmin(2, info.buffer->getNumChannels());
-        if (!processorActive)
+        const int available = juce::jmin(info.numSamples, outputFifo.getNumReady());
+        if (available > 0)
         {
-            processor.clear();
-            processor.setRateChange(keepKey ? 0.0 : percent);
-            processor.setTempoChange(keepKey ? percent : 0.0);
-            appliedPercent = percent;
-            appliedPreserveKey = keepKey;
-            processorActive = true;
-            fractionalInputSamples = 0.0;
-
-            // SoundTouch needs several thousand samples of look-ahead before
-            // it can output its first block. Prime only once, at transition
-            // from direct playback to pitch-controlled playback.
-            const int latency = juce::jmax(0, processor.getSetting(SETTING_INITIAL_LATENCY));
-            const int outputBatch = juce::jmax(512, processor.getSetting(SETTING_NOMINAL_OUTPUT_SEQUENCE));
-            int toPrime = juce::jmin(16384, latency + juce::jmax(info.numSamples * 2, outputBatch / 2));
-            while (toPrime > 0)
+            int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
+            outputFifo.prepareToRead(available, start1, size1, start2, size2);
+            const int channels = juce::jmin(2, info.buffer->getNumChannels());
+            for (int ch = 0; ch < channels; ++ch)
             {
-                const int chunk = juce::jmin(toPrime, inputBuffer.getNumSamples());
-                feedInput(chunk);
-                toPrime -= chunk;
+                if (size1 > 0)
+                    info.buffer->copyFrom(ch, info.startSample, ringBuffer, ch, start1, size1);
+                if (size2 > 0)
+                    info.buffer->copyFrom(ch, info.startSample + size1, ringBuffer, ch, start2, size2);
             }
+            outputFifo.finishedRead(size1 + size2);
         }
-        else if (std::abs(percent - appliedPercent) >= 0.05 || keepKey != appliedPreserveKey)
-        {
-            // Do not flush the FIFO during live pitch moves: flushed frames
-            // were the main reason the music stopped briefly at each change.
-            processor.setRateChange(keepKey ? 0.0 : percent);
-            processor.setTempoChange(keepKey ? percent : 0.0);
-            appliedPercent = percent;
-            appliedPreserveKey = keepKey;
-        }
-
-        // Tempo +16% consumes about 1.16 input frames per output frame.
-        // The previous implementation fed only the number of MISSING output
-        // frames. That gradually starved the processor and created audible
-        // dropouts. Feed an input budget every callback, even with output queued.
-        const double outputPerInput = juce::jmax(0.01, processor.getInputOutputSampleRatio());
-        fractionalInputSamples += static_cast<double>(info.numSamples) / outputPerInput;
-        int inputBudget = static_cast<int>(fractionalInputSamples);
-        fractionalInputSamples -= static_cast<double>(inputBudget);
-        while (inputBudget > 0)
-        {
-            const int chunk = juce::jmin(inputBudget, inputBuffer.getNumSamples());
-            feedInput(chunk);
-            inputBudget -= chunk;
-        }
-
-        // Processing is block-based, so keep output FIFO ahead of the device
-        // callback. This normally needs no extra feeding after the first block.
-        const int outputTarget = info.numSamples + juce::jmin(512, info.numSamples);
-        for (int attempt = 0; attempt < 4 &&
-             static_cast<int>(processor.numSamples()) < outputTarget; ++attempt)
-        {
-            const int inputSequence = juce::jmax(512, processor.getSetting(SETTING_NOMINAL_INPUT_SEQUENCE));
-            const int chunk = juce::jmin(inputSequence, inputBuffer.getNumSamples());
-            feedInput(chunk);
-        }
-
-        const int wanted = juce::jmin(info.numSamples, static_cast<int>(processor.numSamples()));
-        if (wanted > 0)
-        {
-            // receiveSamples can return fewer frames than requested.
-            const unsigned int got = processor.receiveSamples(
-                interleavedOutput.data(), static_cast<unsigned int>(wanted));
-            for (int i = 0; i < static_cast<int>(got); ++i)
-                for (int ch = 0; ch < channels; ++ch)
-                    info.buffer->setSample(ch, info.startSample + i,
-                        interleavedOutput[static_cast<size_t>(i) * 2 + ch]);
-        }
-        // Unavailable samples remain silent, never uninitialised or noise.
+        notify();
     }
 
 private:
-    void feedInput(int numSamples)
-    {
-        if (numSamples <= 0)
-            return;
-        juce::AudioSourceChannelInfo sourceBlock(&inputBuffer, 0, numSamples);
-        transport.getNextAudioBlock(sourceBlock);
-        for (int i = 0; i < numSamples; ++i)
-        {
-            interleavedInput[static_cast<size_t>(i) * 2] = inputBuffer.getSample(0, i);
-            interleavedInput[static_cast<size_t>(i) * 2 + 1] = inputBuffer.getSample(1, i);
-        }
-        processor.putSamples(interleavedInput.data(), static_cast<unsigned int>(numSamples));
-    }
-
+    static constexpr int fifoCapacity = 65536;
+    static constexpr int targetBuffered = 8192;
     juce::AudioTransportSource& transport;
+    juce::ResamplingAudioSource resampler;
     soundtouch::SoundTouch processor;
-    juce::AudioBuffer<float> inputBuffer;
+    juce::AbstractFifo outputFifo;
+    juce::AudioBuffer<float> ringBuffer, inputBuffer;
     std::vector<soundtouch::SAMPLETYPE> interleavedInput, interleavedOutput;
     std::atomic<double> requestedPercent{0.0};
     std::atomic<bool> preservePitch{true};
-    double fractionalInputSamples = 0.0;
+    std::atomic<unsigned int> resetRequest{0}, resetAck{0};
+    unsigned int lastHandledReset = 0, lastConsumedReset = 0;
+    int currentMode = -1; // 0 = resample, 1 = preserve key
     double appliedPercent = 0.0;
-    bool appliedPreserveKey = true;
-    bool processorActive = false;
+
+    void discardQueuedOutput()
+    {
+        const int available = outputFifo.getNumReady();
+        if (available > 0)
+        {
+            int s1 = 0, n1 = 0, s2 = 0, n2 = 0;
+            outputFifo.prepareToRead(available, s1, n1, s2, n2);
+            outputFifo.finishedRead(n1 + n2);
+        }
+    }
+
+    void queueAudio(const juce::AudioBuffer<float>& block, int count)
+    {
+        if (count <= 0)
+            return;
+        const int amount = juce::jmin(count, outputFifo.getFreeSpace());
+        int s1 = 0, n1 = 0, s2 = 0, n2 = 0;
+        outputFifo.prepareToWrite(amount, s1, n1, s2, n2);
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            if (n1 > 0) ringBuffer.copyFrom(ch, s1, block, ch, 0, n1);
+            if (n2 > 0) ringBuffer.copyFrom(ch, s2, block, ch, n1, n2);
+        }
+        outputFifo.finishedWrite(n1 + n2);
+    }
+
+    void queueInterleaved(const soundtouch::SAMPLETYPE* block, int count)
+    {
+        const int amount = juce::jmin(count, outputFifo.getFreeSpace());
+        if (amount <= 0)
+            return;
+        int s1 = 0, n1 = 0, s2 = 0, n2 = 0;
+        outputFifo.prepareToWrite(amount, s1, n1, s2, n2);
+        for (int i = 0; i < n1; ++i)
+            for (int ch = 0; ch < 2; ++ch)
+                ringBuffer.setSample(ch, s1 + i, block[(i * 2) + ch]);
+        for (int i = 0; i < n2; ++i)
+            for (int ch = 0; ch < 2; ++ch)
+                ringBuffer.setSample(ch, s2 + i, block[((n1 + i) * 2) + ch]);
+        outputFifo.finishedWrite(n1 + n2);
+    }
+
+    void renderOnce(int mode, double percent)
+    {
+        if (mode == 0)
+        {
+            // Rate changes are handled by an efficient continuous resampler.
+            juce::AudioSourceChannelInfo block(&inputBuffer, 0, 2048);
+            resampler.getNextAudioBlock(block);
+            queueAudio(inputBuffer, 2048);
+            return;
+        }
+
+        // SoundTouch emits samples in batches. Collect the output on the worker,
+        // never inside the time-critical callback.
+        int ready = static_cast<int>(processor.numSamples());
+        for (int tries = 0; ready == 0 && tries < 3; ++tries)
+        {
+            juce::AudioSourceChannelInfo block(&inputBuffer, 0, 4096);
+            resampler.getNextAudioBlock(block);
+            for (int i = 0; i < 4096; ++i)
+            {
+                interleavedInput[static_cast<size_t>(i) * 2] = inputBuffer.getSample(0, i);
+                interleavedInput[static_cast<size_t>(i) * 2 + 1] = inputBuffer.getSample(1, i);
+            }
+            processor.putSamples(interleavedInput.data(), 4096);
+            ready = static_cast<int>(processor.numSamples());
+        }
+        const int frames = juce::jmin(4096, juce::jmin(ready, outputFifo.getFreeSpace()));
+        if (frames > 0)
+        {
+            const unsigned int done = processor.receiveSamples(interleavedOutput.data(),
+                                                               static_cast<unsigned int>(frames));
+            queueInterleaved(interleavedOutput.data(), static_cast<int>(done));
+        }
+    }
+
+    void run() override
+    {
+        while (!threadShouldExit())
+        {
+            if (!transport.isPlaying())
+            {
+                if (currentMode != -1)
+                {
+                    currentMode = -1;
+                    processor.clear();
+                }
+                wait(5);
+                continue;
+            }
+
+            const auto requestedReset = resetRequest.load();
+            if (requestedReset != lastHandledReset)
+            {
+                processor.clear();
+                currentMode = -1;
+                lastHandledReset = requestedReset;
+                resetAck.store(requestedReset);
+            }
+
+            if (outputFifo.getNumReady() >= targetBuffered)
+            {
+                wait(2);
+                continue;
+            }
+
+            const double pitch = requestedPercent.load();
+            const bool locked = preservePitch.load();
+            const int mode = (locked && std::abs(pitch) >= 0.05) ? 1 : 0;
+            if (mode != currentMode)
+            {
+                currentMode = mode;
+                if (mode == 1)
+                {
+                    processor.clear();
+                    resampler.setResamplingRatio(1.0);
+                    processor.setRateChange(0.0);
+                    processor.setTempoChange(pitch);
+                }
+                else
+                    resampler.setResamplingRatio(1.0 + pitch / 100.0);
+                appliedPercent = pitch;
+            }
+            else if (std::abs(pitch - appliedPercent) >= 0.05)
+            {
+                if (mode == 1)
+                    processor.setTempoChange(pitch);
+                else
+                    resampler.setResamplingRatio(1.0 + pitch / 100.0);
+                appliedPercent = pitch;
+            }
+
+            renderOnce(mode, pitch);
+        }
+    }
 };
 
 class VirtualJogWheel : public juce::Component
