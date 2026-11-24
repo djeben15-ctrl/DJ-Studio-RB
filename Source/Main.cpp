@@ -43,6 +43,10 @@ public:
         processor.setChannels(2);
         processor.setSampleRate(static_cast<unsigned int>(sampleRate));
         processor.setSetting(SETTING_USE_QUICKSEEK, 1);
+        // Shorter analysis windows reduce CPU load and startup latency on older Intel Macs.
+        processor.setSetting(SETTING_SEQUENCE_MS, 40);
+        processor.setSetting(SETTING_SEEKWINDOW_MS, 12);
+        processor.setSetting(SETTING_OVERLAP_MS, 8);
         processor.setTempoChange(0.0);
         processor.setRateChange(0.0);
         currentMode = -1;
@@ -53,7 +57,7 @@ public:
         edgeFadeRemaining = 0;
         previousOutput[0] = previousOutput[1] = 0.0f;
         underrunCount.store(0);
-        startThread();
+        startThread(juce::Thread::Priority::high);
     }
 
     void releaseResources() override
@@ -127,7 +131,7 @@ public:
 
 private:
     static constexpr int fifoCapacity = 131072;
-    static constexpr int targetBuffered = 16384;
+    static constexpr int targetBuffered = 65536;
     juce::AudioTransportSource& transport;
     juce::ResamplingAudioSource resampler;
     soundtouch::SoundTouch processor;
