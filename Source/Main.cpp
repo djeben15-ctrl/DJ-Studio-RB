@@ -82,6 +82,9 @@ public:
         notify();
     }
 
+    // Wake the renderer after PLAY without clearing its prepared audio queue.
+    void wakeRenderer() { notify(); }
+
     int getUnderrunCount() const noexcept { return underrunCount.load(); }
 
     void getNextAudioBlock(const juce::AudioSourceChannelInfo& info) override
@@ -1521,7 +1524,9 @@ private:
     PitchTempoSource pitchSourceA{ transportA };
     PitchTempoSource pitchSourceB{ transportB };
     std::atomic<double> pitchRatioA{ 1.0 }, pitchRatioB{ 1.0 };
-    std::unique_ptr<juce::AudioFormatReaderSource> readerA, readerB;
+    // Playback uses the already-decoded in-memory audio, avoiding MP3 decoding
+    // on the renderer thread while SoundTouch is processing KEY LOCK.
+    std::unique_ptr<juce::MemoryAudioSource> memorySourceA, memorySourceB;
     juce::AudioBuffer<float> scratchA, scratchB;
     std::shared_ptr<juce::AudioBuffer<float>> trackAudioA, trackAudioB;
     std::atomic<bool> scratchingA{ false }, scratchingB{ false };
@@ -1890,9 +1895,9 @@ private:
                         return;
                     }
                     auto& transport = (deckNumber == 0 ? transportA : transportB);
-                    auto* reader = (deckNumber == 0 ? readerA.get() : readerB.get());
+                    auto* source = (deckNumber == 0 ? memorySourceA.get() : memorySourceB.get());
                     auto& positions = (deckNumber == 0 ? hotCuePositionsA : hotCuePositionsB);
-                    if (reader == nullptr)
+                    if (source == nullptr)
                     {
                         status.setText("Carga una pista antes de guardar HOT CUE.", juce::dontSendNotification);
                         return;
@@ -2156,11 +2161,11 @@ private:
 
     void startDeck(int deckNumber)
     {
-        auto* reader = (deckNumber == 0 ? readerA.get() : readerB.get());
+        auto* source = (deckNumber == 0 ? memorySourceA.get() : memorySourceB.get());
         auto& transport = (deckNumber == 0 ? transportA : transportB);
         auto& playButton = (deckNumber == 0 ? playA : playB);
 
-        if (reader == nullptr)
+        if (source == nullptr)
         {
             status.setText(deckNumber == 0
                 ? "DECK A: primero carga una canción."
@@ -2172,11 +2177,11 @@ private:
             transport.getCurrentPosition() >= transport.getLengthInSeconds())
             transport.setPosition(0.0);
 
-        // Flush stale queued samples and wake the deck renderer before playback.
-        // This prevents old buffered audio from delaying the first audible block.
+        // Do not reset/flush the renderer on PLAY: doing so discards prepared
+        // audio and forces SoundTouch to build its first output batch again.
         auto& pitchSource = (deckNumber == 0 ? pitchSourceA : pitchSourceB);
-        pitchSource.resetStream();
         transport.start();
+        pitchSource.wakeRenderer();
         playButton.setButtonText("PLAYING");
         status.setText(deckNumber == 0
             ? "DECK A: orden de reproducción enviada al motor de audio."
@@ -2188,9 +2193,9 @@ private:
     {
         auto& transport = (deckNumber == 0 ? transportA : transportB);
         auto& playButton = (deckNumber == 0 ? playA : playB);
-        auto* reader = (deckNumber == 0 ? readerA.get() : readerB.get());
+        auto* source = (deckNumber == 0 ? memorySourceA.get() : memorySourceB.get());
 
-        if (reader == nullptr)
+        if (source == nullptr)
         {
             status.setText(deckNumber == 0
                 ? "DECK A: primero carga una canción."
@@ -2288,19 +2293,22 @@ private:
             detectedBpm = detector.getBpm();
         }
 
-        std::unique_ptr<juce::AudioFormatReaderSource> newSource(
-            new juce::AudioFormatReaderSource(reader.release(), true));
+        // The complete track has already been decoded into decodedAudio above.
+        // Reuse that buffer for playback so MP3 decoding cannot starve the
+        // SoundTouch renderer while KEY LOCK is active.
+        auto newSource = std::make_unique<juce::MemoryAudioSource>(
+            *decodedAudio, false, false);
 
         if (deckNumber == 0)
         {
             transportA.stop();
+            transportA.setSource(nullptr);
+            memorySourceA.reset();
             std::atomic_store(&trackAudioA, decodedAudio);
             sourceSampleRateA = sourceSampleRate;
             scratchingA.store(false);
-            transportA.setSource(nullptr);
-            readerA.reset();
-            readerA = std::move(newSource);
-            transportA.setSource(readerA.get(), 0, nullptr, sourceSampleRate);
+            memorySourceA = std::move(newSource);
+            transportA.setSource(memorySourceA.get(), 0, nullptr, sourceSampleRate);
             trackA.setText(file.getFileName(), juce::dontSendNotification);
             detectedBpmA = detectedBpm;
             bpmLabelA.setText(detectedBpmA > 0.0
@@ -2314,13 +2322,13 @@ private:
         else
         {
             transportB.stop();
+            transportB.setSource(nullptr);
+            memorySourceB.reset();
             std::atomic_store(&trackAudioB, decodedAudio);
             sourceSampleRateB = sourceSampleRate;
             scratchingB.store(false);
-            transportB.setSource(nullptr);
-            readerB.reset();
-            readerB = std::move(newSource);
-            transportB.setSource(readerB.get(), 0, nullptr, sourceSampleRate);
+            memorySourceB = std::move(newSource);
+            transportB.setSource(memorySourceB.get(), 0, nullptr, sourceSampleRate);
             trackB.setText(file.getFileName(), juce::dontSendNotification);
             detectedBpmB = detectedBpm;
             bpmLabelB.setText(detectedBpmB > 0.0
