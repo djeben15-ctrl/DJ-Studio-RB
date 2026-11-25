@@ -234,8 +234,11 @@ private:
         // Preserve musical key only when Key Lock AND a pitch change are active.
         // The worker may need several blocks of input before SoundTouch returns
         // its first batch; the already-buffered audio bridges that transition.
+        // Keep SoundTouch's internal output queue primed. Feeding only when it
+        // reaches exactly zero lets its FIFO run dry between blocks on some
+        // Intel Macs, which is heard as silence/cut-outs when Key Lock is on.
         int ready = static_cast<int>(processor.numSamples());
-        for (int tries = 0; ready == 0 && tries < 4; ++tries)
+        for (int tries = 0; ready < 8192 && tries < 4; ++tries)
         {
             juce::AudioSourceChannelInfo block(&inputBuffer, 0, 4096);
             resampler.getNextAudioBlock(block);
