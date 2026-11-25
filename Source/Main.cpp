@@ -131,7 +131,7 @@ public:
 
 private:
     static constexpr int fifoCapacity = 131072;
-    static constexpr int targetBuffered = 65536;
+    static constexpr int targetBuffered = 16384;
     juce::AudioTransportSource& transport;
     juce::ResamplingAudioSource resampler;
     soundtouch::SoundTouch processor;
@@ -238,7 +238,7 @@ private:
         // reaches exactly zero lets its FIFO run dry between blocks on some
         // Intel Macs, which is heard as silence/cut-outs when Key Lock is on.
         int ready = static_cast<int>(processor.numSamples());
-        for (int tries = 0; ready < 8192 && tries < 4; ++tries)
+        for (int tries = 0; ready < 4096 && tries < 4; ++tries)
         {
             juce::AudioSourceChannelInfo block(&inputBuffer, 0, 4096);
             resampler.getNextAudioBlock(block);
@@ -2172,6 +2172,10 @@ private:
             transport.getCurrentPosition() >= transport.getLengthInSeconds())
             transport.setPosition(0.0);
 
+        // Flush stale queued samples and wake the deck renderer before playback.
+        // This prevents old buffered audio from delaying the first audible block.
+        auto& pitchSource = (deckNumber == 0 ? pitchSourceA : pitchSourceB);
+        pitchSource.resetStream();
         transport.start();
         playButton.setButtonText("PLAYING");
         status.setText(deckNumber == 0
