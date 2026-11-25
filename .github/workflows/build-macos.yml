@@ -31,19 +31,20 @@ jobs:
       - name: Build application
         run: cmake --build build --config Release --parallel 2
 
-      - name: Package DMG
+      - name: Package macOS app as ZIP
         run: |
           APP_PATH="build/DJStudioRB_artefacts/Release/DJ Studio RB.app"
           test -d "$APP_PATH"
           mkdir -p dist
-          hdiutil create -volname "DJ Studio RB" \
-            -srcfolder "$APP_PATH" \
-            -ov -format UDZO "dist/DJ-Studio-RB-macOS-Intel.dmg"
+          # ZIP the complete .app bundle with macOS resource forks and metadata.
+          # This avoids hdiutil failures such as "Resource busy" on hosted runners.
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" \
+            "dist/DJ-Studio-RB-macOS-Intel.zip"
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: DJ-Studio-RB-macOS-High-Sierra
-          path: dist/DJ-Studio-RB-macOS-Intel.dmg
+          path: dist/DJ-Studio-RB-macOS-Intel.zip
           if-no-files-found: error
           retention-days: 14
