@@ -45,10 +45,11 @@ public:
         processor.setChannels(2);
         processor.setSampleRate(static_cast<unsigned int>(sampleRate));
         processor.setSetting(SETTING_USE_QUICKSEEK, 1);
-        // Shorter analysis windows reduce CPU load and startup latency on older Intel Macs.
-        processor.setSetting(SETTING_SEQUENCE_MS, 40);
-        processor.setSetting(SETTING_SEEKWINDOW_MS, 12);
-        processor.setSetting(SETTING_OVERLAP_MS, 8);
+        // Balanced time-stretch settings: longer analysis and overlap windows
+        // reduce the grainy/chirping artifacts heard during live tempo changes.
+        processor.setSetting(SETTING_SEQUENCE_MS, 64);
+        processor.setSetting(SETTING_SEEKWINDOW_MS, 20);
+        processor.setSetting(SETTING_OVERLAP_MS, 12);
         processor.setTempoChange(0.0);
         processor.setRateChange(0.0);
         currentMode = -1;
@@ -330,7 +331,8 @@ private:
                 const double difference = pitch - appliedPercent;
                 if (std::abs(difference) >= 0.01)
                 {
-                    appliedPercent += juce::jlimit(-0.75, 0.75, difference);
+                    // Limit each rendered block's tempo step to avoid audible zipper noise.
+                    appliedPercent += juce::jlimit(-0.40, 0.40, difference);
                     processor.setRateChange(0.0);
                     processor.setTempoChange(appliedPercent);
                 }
