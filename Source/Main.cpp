@@ -35,6 +35,8 @@ public:
         outputFifo.reset();
         ringBuffer.setSize(2, fifoCapacity, false, true, true);
         inputBuffer.setSize(2, 4096, false, true, true);
+        // Keep scratch buffers large enough for the renderer while processing
+        // smaller SoundTouch slices for more responsive, stable tempo updates.
         interleavedInput.resize(4096 * 2);
         interleavedOutput.resize(4096 * 2);
         resampler.setResamplingRatio(1.0);
@@ -240,20 +242,23 @@ private:
         // Keep SoundTouch's internal output queue primed. Feeding only when it
         // reaches exactly zero lets its FIFO run dry between blocks on some
         // Intel Macs, which is heard as silence/cut-outs when Key Lock is on.
+        // Smaller slices let live tempo changes reach SoundTouch more often.
+        // This avoids large, abrupt processing bursts while the pitch control moves.
+        constexpr int soundTouchBlock = 2048;
         int ready = static_cast<int>(processor.numSamples());
-        for (int tries = 0; ready < 4096 && tries < 4; ++tries)
+        for (int tries = 0; ready < soundTouchBlock && tries < 4; ++tries)
         {
-            juce::AudioSourceChannelInfo block(&inputBuffer, 0, 4096);
+            juce::AudioSourceChannelInfo block(&inputBuffer, 0, soundTouchBlock);
             resampler.getNextAudioBlock(block);
-            for (int i = 0; i < 4096; ++i)
+            for (int i = 0; i < soundTouchBlock; ++i)
             {
                 interleavedInput[static_cast<size_t>(i) * 2] = inputBuffer.getSample(0, i);
                 interleavedInput[static_cast<size_t>(i) * 2 + 1] = inputBuffer.getSample(1, i);
             }
-            processor.putSamples(interleavedInput.data(), 4096);
+            processor.putSamples(interleavedInput.data(), soundTouchBlock);
             ready = static_cast<int>(processor.numSamples());
         }
-        const int frames = juce::jmin(4096, juce::jmin(ready, outputFifo.getFreeSpace()));
+        const int frames = juce::jmin(soundTouchBlock, juce::jmin(ready, outputFifo.getFreeSpace()));
         if (frames > 0)
         {
             const unsigned int done = processor.receiveSamples(interleavedOutput.data(),
@@ -317,17 +322,23 @@ private:
                 appliedPercent = pitch;
                 appliedKeyLock = locked;
             }
+            else if (mode == 1)
+            {
+                // Do not jump SoundTouch's tempo directly for every slider event.
+                // Slew toward the requested value in small steps so the time-stretch
+                // engine can keep its output queue continuous while PITCH is moved.
+                const double difference = pitch - appliedPercent;
+                if (std::abs(difference) >= 0.01)
+                {
+                    appliedPercent += juce::jlimit(-0.75, 0.75, difference);
+                    processor.setRateChange(0.0);
+                    processor.setTempoChange(appliedPercent);
+                }
+                appliedKeyLock = locked;
+            }
             else if (std::abs(pitch - appliedPercent) >= 0.05 || appliedKeyLock != locked)
             {
-                if (mode == 1)
-                {
-                    processor.setRateChange(0.0);
-                    processor.setTempoChange(pitch);
-                }
-                else
-                {
-                    resampler.setResamplingRatio(1.0 + pitch / 100.0);
-                }
+                resampler.setResamplingRatio(1.0 + pitch / 100.0);
                 appliedPercent = pitch;
                 appliedKeyLock = locked;
             }
