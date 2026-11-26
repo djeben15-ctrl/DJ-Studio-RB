@@ -44,7 +44,9 @@ public:
         processor.clear();
         processor.setChannels(2);
         processor.setSampleRate(static_cast<unsigned int>(sampleRate));
-        processor.setSetting(SETTING_USE_QUICKSEEK, 1);
+        // Disable QuickSeek for cleaner transient handling during live time-stretch.
+        // This uses more CPU, so the renderer keeps a larger prepared output cushion.
+        processor.setSetting(SETTING_USE_QUICKSEEK, 0);
         // Balanced time-stretch settings: longer analysis and overlap windows
         // reduce the grainy/chirping artifacts heard during live tempo changes.
         processor.setSetting(SETTING_SEQUENCE_MS, 64);
@@ -137,7 +139,9 @@ public:
 
 private:
     static constexpr int fifoCapacity = 131072;
-    static constexpr int targetBuffered = 16384;
+    // Keep a larger ready-to-play cushion so SoundTouch processing bursts
+    // do not expose empty FIFO sections to the real-time audio callback.
+    static constexpr int targetBuffered = 32768;
     juce::AudioTransportSource& transport;
     juce::ResamplingAudioSource resampler;
     soundtouch::SoundTouch processor;
