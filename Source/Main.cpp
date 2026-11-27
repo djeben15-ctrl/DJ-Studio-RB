@@ -5,6 +5,72 @@
 #include <atomic>
 #include <limits>
 #include <vector>
+#include <algorithm>
+
+
+// Fallback BPM estimator based on the autocorrelation of short-window energy.
+// It runs once when a track is loaded (not on the realtime audio thread).
+static double estimateBpmFromEnergy(const juce::AudioBuffer<float>& audio, double sampleRate)
+{
+    if (audio.getNumSamples() < static_cast<int>(sampleRate * 2.0) || sampleRate <= 0.0)
+        return 0.0;
+
+    constexpr double windowSeconds = 0.01; // 10 ms energy envelope
+    const int hop = juce::jmax(1, static_cast<int>(sampleRate * windowSeconds));
+    const int frameCount = audio.getNumSamples() / hop;
+    if (frameCount < 200)
+        return 0.0;
+
+    std::vector<double> envelope(static_cast<size_t>(frameCount), 0.0);
+    const int channels = audio.getNumChannels();
+    for (int frame = 0; frame < frameCount; ++frame)
+    {
+        const int start = frame * hop;
+        double energy = 0.0;
+        for (int i = 0; i < hop; ++i)
+            for (int ch = 0; ch < channels; ++ch)
+            {
+                const double sample = audio.getSample(ch, start + i);
+                energy += sample * sample;
+            }
+        envelope[static_cast<size_t>(frame)] =
+            std::sqrt(energy / static_cast<double>(hop * juce::jmax(1, channels)));
+    }
+
+    // Emphasise attacks rather than sustained musical energy.
+    double mean = 0.0;
+    std::vector<double> onset(static_cast<size_t>(frameCount), 0.0);
+    for (int i = 1; i < frameCount; ++i)
+    {
+        const double rise = juce::jmax(0.0, envelope[static_cast<size_t>(i)] -
+                                             envelope[static_cast<size_t>(i - 1)]);
+        onset[static_cast<size_t>(i)] = rise;
+        mean += rise;
+    }
+    mean /= static_cast<double>(frameCount);
+    for (auto& value : onset)
+        value -= mean;
+
+    const int minLag = juce::jmax(1, static_cast<int>(std::floor(60.0 / (180.0 * windowSeconds))));
+    const int maxLag = static_cast<int>(std::ceil(60.0 / (70.0 * windowSeconds)));
+    double bestScore = 0.0;
+    int bestLag = 0;
+    for (int lag = minLag; lag <= maxLag; ++lag)
+    {
+        double score = 0.0;
+        for (int i = lag; i < frameCount; ++i)
+            score += onset[static_cast<size_t>(i)] * onset[static_cast<size_t>(i - lag)];
+        if (score > bestScore)
+        {
+            bestScore = score;
+            bestLag = lag;
+        }
+    }
+
+    if (bestLag == 0 || bestScore <= 0.0)
+        return 0.0;
+    return 60.0 / (static_cast<double>(bestLag) * windowSeconds);
+}
 
 
 /**
@@ -2326,6 +2392,11 @@ private:
             }
             detectedBpm = detector.getBpm();
         }
+
+        // SoundTouch BPMDetect can return zero for some decoded MP3 material.
+        // Fall back to an independent energy-onset autocorrelation estimate.
+        if (!std::isfinite(detectedBpm) || detectedBpm < 60.0 || detectedBpm > 200.0)
+            detectedBpm = estimateBpmFromEnergy(*decodedAudio, sourceSampleRate);
 
         // The complete track has already been decoded into decodedAudio above.
         // Reuse that buffer for playback so MP3 decoding cannot starve the
