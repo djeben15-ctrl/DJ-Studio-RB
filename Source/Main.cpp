@@ -985,6 +985,12 @@ public:
         status.setColour(juce::Label::textColourId, juce::Colour(180, 190, 205));
         addAndMakeVisible(status);
 
+        audioDiagnostic.setText("AUDIO: esperando reproducción", juce::dontSendNotification);
+        audioDiagnostic.setJustificationType(juce::Justification::centred);
+        audioDiagnostic.setColour(juce::Label::textColourId, juce::Colour(255, 205, 90));
+        audioDiagnostic.setFont(juce::Font(11.0f, juce::Font::bold));
+        addAndMakeVisible(audioDiagnostic);
+
         setupDeckControls();
 
         audioSettingsButton.setButtonText("AUDIO");
@@ -1535,6 +1541,7 @@ public:
         mixerLabel.setBounds(mixerX + 12, my(658), mixerW - 24, mh(18));
         mixerLabel.setJustificationType(juce::Justification::centred);
         crossfader.setBounds(crossfaderX, my(674), crossfaderWidth, mh(20));
+        audioDiagnostic.setBounds(margin, 712, w - 2 * margin, 22);
         status.setBounds(margin, 740, w - 2 * margin, 25);
     }
 private:
@@ -1566,7 +1573,7 @@ private:
     bool jogFadingInA = false, jogFadingInB = false;
     std::unique_ptr<juce::FileChooser> chooserA, chooserB;
 
-    juce::Label title, mixerLabel, status, channelLabelA, channelLabelB, masterLabel, vuLabelA, vuLabelB, clipLabel;
+    juce::Label title, mixerLabel, status, audioDiagnostic, channelLabelA, channelLabelB, masterLabel, vuLabelA, vuLabelB, clipLabel;
     std::atomic<int> clipHoldTicks{ 0 };
     VUMeter vuMeterA, vuMeterB;
     WaveformDisplay waveformA, waveformB;
@@ -2006,20 +2013,13 @@ private:
         vuMeterA.setLevel(meterLevelA.load());
         vuMeterB.setLevel(meterLevelB.load());
 
-        // Diagnostic: report real-time output FIFO underruns while testing KEY LOCK.
-        // This helps distinguish SoundTouch artifacts from missing audio blocks.
+        // Dedicated diagnostic label: keep the counters visible and independent
+        // from transient status messages elsewhere in the interface.
         const int underrunsA = pitchSourceA.getUnderrunCount();
         const int underrunsB = pitchSourceB.getUnderrunCount();
-        static int lastUnderrunsA = -1;
-        static int lastUnderrunsB = -1;
-        if (underrunsA != lastUnderrunsA || underrunsB != lastUnderrunsB)
-        {
-            lastUnderrunsA = underrunsA;
-            lastUnderrunsB = underrunsB;
-            status.setText("AUDIO UNDERRUNS  |  DECK A: " + juce::String(underrunsA)
-                + "  |  DECK B: " + juce::String(underrunsB),
-                juce::dontSendNotification);
-        }
+        audioDiagnostic.setText("AUDIO UNDERRUNS  |  DECK A: " + juce::String(underrunsA)
+            + "  |  DECK B: " + juce::String(underrunsB),
+            juce::dontSendNotification);
         const double lengthA = transportA.getLengthInSeconds();
         const double lengthB = transportB.getLengthInSeconds();
         waveformA.setPlayhead(lengthA > 0.0 ? transportA.getCurrentPosition() / lengthA : 0.0);
