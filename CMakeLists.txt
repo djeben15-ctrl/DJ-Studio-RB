@@ -30,6 +30,13 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(SoundTouch)
 
+# The application uses float audio samples. SoundTouch itself must be compiled
+# with the same sample type; defining this only on DJStudioRB creates an ABI
+# mismatch between the app headers and the SoundTouch library implementation.
+if(TARGET SoundTouch)
+    target_compile_definitions(SoundTouch PUBLIC SOUNDTOUCH_FLOAT_SAMPLES)
+endif()
+
 juce_add_gui_app(DJStudioRB
     PRODUCT_NAME "DJ Studio RB"
     COMPANY_NAME "DJ Studio RB"
