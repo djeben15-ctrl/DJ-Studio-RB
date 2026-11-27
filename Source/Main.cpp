@@ -2005,6 +2005,21 @@ private:
     {
         vuMeterA.setLevel(meterLevelA.load());
         vuMeterB.setLevel(meterLevelB.load());
+
+        // Diagnostic: report real-time output FIFO underruns while testing KEY LOCK.
+        // This helps distinguish SoundTouch artifacts from missing audio blocks.
+        const int underrunsA = pitchSourceA.getUnderrunCount();
+        const int underrunsB = pitchSourceB.getUnderrunCount();
+        static int lastUnderrunsA = -1;
+        static int lastUnderrunsB = -1;
+        if (underrunsA != lastUnderrunsA || underrunsB != lastUnderrunsB)
+        {
+            lastUnderrunsA = underrunsA;
+            lastUnderrunsB = underrunsB;
+            status.setText("AUDIO UNDERRUNS  |  DECK A: " + juce::String(underrunsA)
+                + "  |  DECK B: " + juce::String(underrunsB),
+                juce::dontSendNotification);
+        }
         const double lengthA = transportA.getLengthInSeconds();
         const double lengthB = transportB.getLengthInSeconds();
         waveformA.setPlayhead(lengthA > 0.0 ? transportA.getCurrentPosition() / lengthA : 0.0);
