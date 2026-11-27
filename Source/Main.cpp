@@ -372,10 +372,13 @@ private:
 
             const double pitch = requestedPercent.load();
             const bool locked = preservePitch.load();
-            // Keep the clean JUCE path at zero pitch. When Key Lock is first
-            // engaged away from zero, the worker must build a full SoundTouch
-            // output batch while the already queued audio plays.
-            const int mode = (locked && std::abs(pitch) >= 0.05) ? 1 : 0;
+            // Keep the KEY LOCK processing path active even at 0% pitch.
+            // Switching from the clean resampler to SoundTouch at the first
+            // tiny slider movement clears SoundTouch's history and introduces
+            // its startup latency, which can be heard as a cut/click.
+            // SoundTouch at 0% is the prepared neutral state; tempo changes
+            // then happen inside the same continuous processing path.
+            const int mode = locked ? 1 : 0;
             if (currentMode != mode)
             {
                 currentMode = mode;
