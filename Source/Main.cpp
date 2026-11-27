@@ -51,7 +51,7 @@ public:
         // reduce the grainy/chirping artifacts heard during live tempo changes.
         processor.setSetting(SETTING_SEQUENCE_MS, 64);
         processor.setSetting(SETTING_SEEKWINDOW_MS, 20);
-        processor.setSetting(SETTING_OVERLAP_MS, 12);
+        processor.setSetting(SETTING_OVERLAP_MS, 16);
         processor.setTempoChange(0.0);
         processor.setRateChange(0.0);
         currentMode = -1;
@@ -249,7 +249,9 @@ private:
         // Intel Macs, which is heard as silence/cut-outs when Key Lock is on.
         // Smaller slices let live tempo changes reach SoundTouch more often.
         // This avoids large, abrupt processing bursts while the pitch control moves.
-        constexpr int soundTouchBlock = 2048;
+        // Use shorter processing slices so live tempo updates are applied
+        // more frequently and with smaller audible steps.
+        constexpr int soundTouchBlock = 512;
         int ready = static_cast<int>(processor.numSamples());
         for (int tries = 0; ready < soundTouchBlock && tries < 4; ++tries)
         {
@@ -336,7 +338,7 @@ private:
                 if (std::abs(difference) >= 0.01)
                 {
                     // Limit each rendered block's tempo step to avoid audible zipper noise.
-                    appliedPercent += juce::jlimit(-0.40, 0.40, difference);
+                    appliedPercent += juce::jlimit(-0.10, 0.10, difference);
                     processor.setRateChange(0.0);
                     processor.setTempoChange(appliedPercent);
                 }
