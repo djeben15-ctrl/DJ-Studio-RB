@@ -100,11 +100,11 @@ public:
         stopThread(3000);
         outputFifo.reset();
         ringBuffer.setSize(2, fifoCapacity, false, true, true);
-        inputBuffer.setSize(2, 4096, false, true, true);
-        // Keep scratch buffers large enough for the renderer while processing
-        // smaller SoundTouch slices for more responsive, stable tempo updates.
-        interleavedInput.resize(4096 * 2);
-        interleavedOutput.resize(4096 * 2);
+        inputBuffer.setSize(2, 8192, false, true, true);
+        // Keep enough preallocated space for larger SoundTouch batches. Larger
+        // batches reduce worker wakeups and help maintain realtime output on older Intel Macs.
+        interleavedInput.resize(8192 * 2);
+        interleavedOutput.resize(8192 * 2);
         resampler.setResamplingRatio(1.0);
         resampler.prepareToPlay(juce::jmax(2048, samplesPerBlockExpected), sampleRate);
         processor.clear();
@@ -207,7 +207,7 @@ private:
     static constexpr int fifoCapacity = 131072;
     // Keep a larger ready-to-play cushion so SoundTouch processing bursts
     // do not expose empty FIFO sections to the real-time audio callback.
-    static constexpr int targetBuffered = 32768;
+    static constexpr int targetBuffered = 65536;
     juce::AudioTransportSource& transport;
     juce::ResamplingAudioSource resampler;
     soundtouch::SoundTouch processor;
@@ -317,7 +317,7 @@ private:
         // This avoids large, abrupt processing bursts while the pitch control moves.
         // Use shorter processing slices so live tempo updates are applied
         // more frequently and with smaller audible steps.
-        constexpr int soundTouchBlock = 512;
+        constexpr int soundTouchBlock = 2048;
         int ready = static_cast<int>(processor.numSamples());
         for (int tries = 0; ready < soundTouchBlock && tries < 4; ++tries)
         {
@@ -372,9 +372,9 @@ private:
 
             const double pitch = requestedPercent.load();
             const bool locked = preservePitch.load();
-            // At 0% use the original clean audio, avoiding the audible
-            // chirping SoundTouch can introduce when it needlessly processes
-            // unmodified music. With Key Lock OFF use JUCE resampling.
+            // Keep the clean JUCE path at zero pitch. When Key Lock is first
+            // engaged away from zero, the worker must build a full SoundTouch
+            // output batch while the already queued audio plays.
             const int mode = (locked && std::abs(pitch) >= 0.05) ? 1 : 0;
             if (currentMode != mode)
             {
