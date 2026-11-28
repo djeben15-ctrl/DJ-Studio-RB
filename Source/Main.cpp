@@ -110,14 +110,14 @@ public:
         processor.clear();
         processor.setChannels(2);
         processor.setSampleRate(static_cast<unsigned int>(sampleRate));
-        // Disable QuickSeek for cleaner transient handling during live time-stretch.
-        // This uses more CPU, so the renderer keeps a larger prepared output cushion.
+        // Use SoundTouch's conventional short-window settings for live DJ
+        // tempo changes. The previous 64/20/16 ms windows produced excessive
+        // overlap and could smear transients or create chirping at small pitch
+        // movements. Keep QuickSeek disabled for the more accurate search.
         processor.setSetting(SETTING_USE_QUICKSEEK, 0);
-        // Balanced time-stretch settings: longer analysis and overlap windows
-        // reduce the grainy/chirping artifacts heard during live tempo changes.
-        processor.setSetting(SETTING_SEQUENCE_MS, 64);
-        processor.setSetting(SETTING_SEEKWINDOW_MS, 20);
-        processor.setSetting(SETTING_OVERLAP_MS, 16);
+        processor.setSetting(SETTING_SEQUENCE_MS, 40);
+        processor.setSetting(SETTING_SEEKWINDOW_MS, 15);
+        processor.setSetting(SETTING_OVERLAP_MS, 8);
         processor.setTempoChange(0.0);
         processor.setRateChange(0.0);
         currentMode = -1;
