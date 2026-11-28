@@ -205,9 +205,11 @@ public:
 
 private:
     static constexpr int fifoCapacity = 131072;
-    // Keep a larger ready-to-play cushion so SoundTouch processing bursts
-    // do not expose empty FIFO sections to the real-time audio callback.
-    static constexpr int targetBuffered = 65536;
+    // Keep a moderate output cushion. A very large queue makes live PITCH
+    // changes arrive late because already-rendered audio cannot be retimed.
+    // Underrun counters are zero on the user's system, so prioritize control
+    // responsiveness rather than adding more latency.
+    static constexpr int targetBuffered = 16384;
     juce::AudioTransportSource& transport;
     juce::ResamplingAudioSource resampler;
     soundtouch::SoundTouch processor;
@@ -406,8 +408,9 @@ private:
                 const double difference = pitch - appliedPercent;
                 if (std::abs(difference) >= 0.01)
                 {
-                    // Limit each rendered block's tempo step to avoid audible zipper noise.
-                    appliedPercent += juce::jlimit(-0.10, 0.10, difference);
+                    // Apply smaller tempo increments to avoid audible steps
+                    // in SoundTouch's overlap/add processing while the slider moves.
+                    appliedPercent += juce::jlimit(-0.05, 0.05, difference);
                     processor.setRateChange(0.0);
                     processor.setTempoChange(appliedPercent);
                 }
