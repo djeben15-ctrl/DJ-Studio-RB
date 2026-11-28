@@ -8,6 +8,7 @@
 #include <limits>
 #include <vector>
 #include <algorithm>
+#include <thread>
 
 
 // Fallback BPM estimator based on the autocorrelation of short-window energy.
@@ -2455,6 +2456,33 @@ private:
         cacheFile.replaceWithText(lines.joinIntoString("\\n"));
     }
 
+    void startStemsSeparationInBackground(const juce::File& audioFile)
+    {
+        const auto sourcePath = audioFile.getFullPathName();
+        const auto pythonPath = juce::File::getSpecialLocation(
+            juce::File::userHomeDirectory).getChildFile("djstems-venv/bin/python").getFullPathName();
+        const auto helperPath = juce::File::getSpecialLocation(
+            juce::File::userApplicationDataDirectory)
+            .getChildFile("DJStudioRB/scripts/stems.py").getFullPathName();
+
+        // Separation runs outside the JUCE audio and message threads. It never
+        // blocks playback, Scratch, KEY LOCK, PITCH, or the user interface.
+        std::thread([sourcePath, pythonPath, helperPath]()
+        {
+            if (!juce::File(pythonPath).existsAsFile()
+                || !juce::File(helperPath).existsAsFile())
+                return;
+
+            juce::ChildProcess process;
+            juce::StringArray arguments;
+            arguments.add(pythonPath);
+            arguments.add(helperPath);
+            arguments.add(sourcePath);
+            if (process.start(arguments))
+                process.waitForProcessToFinish(-1);
+        }).detach();
+    }
+
     void loadTrackFromFile(int deckNumber, const juce::File& file)
     {
         std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
@@ -2564,7 +2592,12 @@ private:
             playB.setButtonText("PLAY");
         }
 
-        status.setText("Pista cargada. Pulsa PLAY para reproducir.", juce::dontSendNotification);
+        // Prepare reusable STEMS files in the background after the track loads.
+        // The audio continues to use the original track until stem buffers are
+        // connected and validated in the next integration stage.
+        startStemsSeparationInBackground(file);
+        status.setText("Pista cargada. STEMS: separación en segundo plano (si el motor está instalado). Pulsa PLAY para reproducir.",
+                       juce::dontSendNotification);
     }
 };
 
