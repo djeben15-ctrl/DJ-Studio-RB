@@ -452,6 +452,7 @@ public:
     {
         dragging = true;
         startAngle = angleAt(event.position);
+        lastAngle = startAngle;
         startPosition = position;
         lastDragTime = juce::Time::getMillisecondCounterHiRes();
         if (onScratchStart)
@@ -463,18 +464,21 @@ public:
         if (!dragging)
             return;
 
-        double delta = angleAt(event.position) - startAngle;
+        // Incremental angular tracking avoids the half-turn wrap that made
+        // the platter jump or reverse unexpectedly during a continuous scratch.
+        const double currentAngle = angleAt(event.position);
+        double delta = currentAngle - lastAngle;
         if (delta > juce::MathConstants<double>::pi)
             delta -= juce::MathConstants<double>::twoPi;
         else if (delta < -juce::MathConstants<double>::pi)
             delta += juce::MathConstants<double>::twoPi;
 
-        const double previousPosition = position;
-        position = juce::jlimit(0.0, 1.0,
-                                startPosition + delta / juce::MathConstants<double>::twoPi * 0.30);
         const double now = juce::Time::getMillisecondCounterHiRes();
         const double elapsed = juce::jmax(0.001, (now - lastDragTime) / 1000.0);
-        const double speed = (position - previousPosition) / elapsed;
+        const double positionDelta = delta / juce::MathConstants<double>::twoPi * 0.30;
+        position = juce::jlimit(0.0, 1.0, position + positionDelta);
+        const double speed = positionDelta / elapsed;
+        lastAngle = currentAngle;
         lastDragTime = now;
         if (onScratchMove)
             onScratchMove(position, speed);
@@ -499,6 +503,7 @@ private:
     double position = 0.0;
     double startPosition = 0.0;
     double startAngle = 0.0;
+    double lastAngle = 0.0;
     bool dragging = false;
     double lastDragTime = 0.0;
     uint32_t lastRepaintTimeMs = 0;
@@ -1635,7 +1640,7 @@ private:
     std::atomic<double> scratchSpeedA{ 0.0 }, scratchSpeedB{ 0.0 };
     double outputSampleRate = 44100.0;
     double sourceSampleRateA = 44100.0, sourceSampleRateB = 44100.0;
-    static constexpr int jogFadeLength = 3840; // about 80 ms at 48 kHz
+    static constexpr int jogFadeLength = 240; // about 5 ms at 48 kHz: click protection without an audible pause
     std::atomic<double> jogPendingPositionA{ 0.0 }, jogPendingPositionB{ 0.0 };
     std::atomic<bool> jogSeekRequestedA{ false }, jogSeekRequestedB{ false };
     std::atomic<bool> jogSeekReadyA{ false }, jogSeekReadyB{ false };
