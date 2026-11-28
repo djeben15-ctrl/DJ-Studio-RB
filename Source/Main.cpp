@@ -1487,7 +1487,8 @@ public:
         pitchValueA.setBounds(pitchX_A - 9, jogY + 127, 54, 18);
         pitchRangeA.setBounds(margin + deckW - 130, deckY + 50, 108, 22);
         keyLockA.setBounds(margin + deckW - 130, deckY + 23, 108, 24);
-        bpmLabelA.setBounds(margin + 20, deckY + 24, deckW - 164, 22);
+        // Put the BPM readout beside the A platter for quick visual reference.
+        bpmLabelA.setBounds(centerX_A - 70, jogY - 20, 140, 20);
         const int loopWidthA = 252;
         const int loopStartA = margin + (deckW - loopWidthA) / 2;
         loopInButtonA.setBounds(loopStartA, loopY, 76, 28);
@@ -1510,7 +1511,8 @@ public:
         pitchValueB.setBounds(pitchX_B - 9, jogY + 127, 54, 18);
         pitchRangeB.setBounds(deckBX + deckW - 130, deckY + 50, 108, 22);
         keyLockB.setBounds(deckBX + deckW - 130, deckY + 23, 108, 24);
-        bpmLabelB.setBounds(deckBX + 20, deckY + 24, deckW - 164, 22);
+        // Put the BPM readout beside the B platter for quick visual reference.
+        bpmLabelB.setBounds(centerX_B - 70, jogY - 20, 140, 20);
         const int loopStartB = deckBX + (deckW - loopWidthA) / 2;
         loopInButtonB.setBounds(loopStartB, loopY, 76, 28);
         loopOutButtonB.setBounds(loopStartB + 82, loopY, 76, 28);
@@ -2405,7 +2407,7 @@ private:
             detectedBpmA = detectedBpm;
             bpmLabelA.setText(detectedBpmA > 0.0
                 ? "BPM: " + juce::String(detectedBpmA, 1) + "  |  ACTUAL: " +
-                    juce::String(detectedBpmA * (1.0 + pitchA.getValue() / 100.0), 1)
+                    juce::String(detectedBpmA * (1.0 - pitchA.getValue() / 100.0), 1)
                 : "BPM: no detectado", juce::dontSendNotification);
             waveformA.setAudio(decodedAudio, static_cast<double>(decodedSamples) / sourceSampleRate);
             waveformA.setPlayhead(0.0);
@@ -2425,7 +2427,7 @@ private:
             detectedBpmB = detectedBpm;
             bpmLabelB.setText(detectedBpmB > 0.0
                 ? "BPM: " + juce::String(detectedBpmB, 1) + "  |  ACTUAL: " +
-                    juce::String(detectedBpmB * (1.0 + pitchB.getValue() / 100.0), 1)
+                    juce::String(detectedBpmB * (1.0 - pitchB.getValue() / 100.0), 1)
                 : "BPM: no detectado", juce::dontSendNotification);
             waveformB.setAudio(decodedAudio, static_cast<double>(decodedSamples) / sourceSampleRate);
             waveformB.setPlayhead(0.0);
