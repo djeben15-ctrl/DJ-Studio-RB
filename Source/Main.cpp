@@ -1922,7 +1922,8 @@ private:
         jogWheelA.onScratchEnd = [this](double p)
         {
             const double length = transportA.getLengthInSeconds();
-            scratchingA.store(false);
+            // Keep rendering the platter's last scratch position until the audio
+            // thread has prepared the handoff. Do not fall back to the stale transport early.
             scratchSpeedA.store(0.0);
             if (length > 0.0)
             {
@@ -1954,7 +1955,8 @@ private:
         jogWheelB.onScratchEnd = [this](double p)
         {
             const double length = transportB.getLengthInSeconds();
-            scratchingB.store(false);
+            // Keep rendering the platter's last scratch position until the audio
+            // thread has prepared the handoff. Do not fall back to the stale transport early.
             scratchSpeedB.store(0.0);
             if (length > 0.0)
             {
@@ -2154,25 +2156,28 @@ private:
         // Apply each seek only after the audio thread has faded that deck out.
         if (jogSeekReadyA.exchange(false))
         {
-            // Stop the decoder before changing its read position. This avoids
-            // racing the audio callback while the reader jumps to another frame.
-            transportA.stop();
+            // Seek the running transport in place. Keep the scratch renderer active
+            // until this point so there is no switch back to its stale read position.
             transportA.setPosition(jogPendingPositionA.load());
             lowStateA[0] = lowStateA[1] = 0.0f;
             midStateA[0] = midStateA[1] = 0.0f;
+            scratchingA.store(false, std::memory_order_release);
             if (jogResumePlaybackA.exchange(false))
-                transportA.start();
-            jogResumeRequestA.store(true);
+                jogResumeRequestA.store(true);
+            else
+                jogResumeRequestA.store(true);
         }
         if (jogSeekReadyB.exchange(false))
         {
-            transportB.stop();
+            // Seek the running transport in place; avoid stop/start gaps on release.
             transportB.setPosition(jogPendingPositionB.load());
             lowStateB[0] = lowStateB[1] = 0.0f;
             midStateB[0] = midStateB[1] = 0.0f;
+            scratchingB.store(false, std::memory_order_release);
             if (jogResumePlaybackB.exchange(false))
-                transportB.start();
-            jogResumeRequestB.store(true);
+                jogResumeRequestB.store(true);
+            else
+                jogResumeRequestB.store(true);
         }
 
         updateDeckDisplay(0);
