@@ -1479,8 +1479,9 @@ public:
         trackA.setBounds(margin + 20, deckY + 48, deckW - 164, 28);
         timeA.setBounds(margin + 20, deckY + 78, deckW - 40, 20);
         seekA.setBounds(margin + 20, deckY + 102, deckW - 40, 22);
-        cueA.setBounds(transportStartA, transportY, transportWidth, 36);
-        playA.setBounds(transportStartA + transportWidth + transportGap, transportY, transportWidth, 36);
+        // Stack CUE and PLAY to the left of the platter as in the user's layout reference.
+        cueA.setBounds(centerX_A - 98, jogY + 28, 88, 36);
+        playA.setBounds(centerX_A - 98, jogY + 72, 88, 36);
         jogWheelA.setBounds(centerX_A, jogY, 150, 150);
         pitchLabelA.setBounds(pitchX_A - 7, jogY - 42, 54, 18);
         pitchA.setBounds(pitchX_A, jogY, 36, 126);
@@ -1488,7 +1489,9 @@ public:
         pitchRangeA.setBounds(margin + deckW - 130, deckY + 50, 108, 22);
         keyLockA.setBounds(margin + deckW - 130, deckY + 23, 108, 24);
         // Put the BPM readout beside the A platter for quick visual reference.
-        bpmLabelA.setBounds(centerX_A - 105, jogY - 30, 210, 20);
+        bpmLabelA.setJustificationType(juce::Justification::centred);
+        bpmLabelA.setFont(juce::Font(11.0f, juce::Font::bold));
+        bpmLabelA.setBounds(centerX_A + 8, jogY + 65, 134, 22);
         const int loopWidthA = 252;
         const int loopStartA = margin + (deckW - loopWidthA) / 2;
         loopInButtonA.setBounds(loopStartA, loopY, 76, 28);
@@ -1503,8 +1506,9 @@ public:
         trackB.setBounds(deckBX + 20, deckY + 48, deckW - 164, 28);
         timeB.setBounds(deckBX + 20, deckY + 78, deckW - 40, 20);
         seekB.setBounds(deckBX + 20, deckY + 102, deckW - 40, 22);
-        cueB.setBounds(transportStartB, transportY, transportWidth, 36);
-        playB.setBounds(transportStartB + transportWidth + transportGap, transportY, transportWidth, 36);
+        // Mirror CUE/PLAY placement on Deck B.
+        cueB.setBounds(centerX_B - 98, jogY + 28, 88, 36);
+        playB.setBounds(centerX_B - 98, jogY + 72, 88, 36);
         jogWheelB.setBounds(centerX_B, jogY, 150, 150);
         pitchLabelB.setBounds(pitchX_B - 7, jogY - 42, 54, 18);
         pitchB.setBounds(pitchX_B, jogY, 36, 126);
@@ -1512,7 +1516,9 @@ public:
         pitchRangeB.setBounds(deckBX + deckW - 130, deckY + 50, 108, 22);
         keyLockB.setBounds(deckBX + deckW - 130, deckY + 23, 108, 24);
         // Put the BPM readout beside the B platter for quick visual reference.
-        bpmLabelB.setBounds(centerX_B - 105, jogY - 30, 210, 20);
+        bpmLabelB.setJustificationType(juce::Justification::centred);
+        bpmLabelB.setFont(juce::Font(11.0f, juce::Font::bold));
+        bpmLabelB.setBounds(centerX_B + 8, jogY + 65, 134, 22);
         const int loopStartB = deckBX + (deckW - loopWidthA) / 2;
         loopInButtonB.setBounds(loopStartB, loopY, 76, 28);
         loopOutButtonB.setBounds(loopStartB + 82, loopY, 76, 28);
