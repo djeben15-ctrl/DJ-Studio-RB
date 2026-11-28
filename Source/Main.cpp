@@ -877,8 +877,10 @@ public:
             if (!enabled[stem].load(std::memory_order_relaxed) || stems[stem] == nullptr)
                 continue;
             const auto& source = *stems[stem];
-            const int available = juce::jmax(0, juce::jmin(info.numSamples,
-                totalSamples - static_cast<int>(juce::jmax<juce::int64>(0, start))));
+            const juce::int64 remaining = juce::jmax<juce::int64>(
+                0, totalSamples - juce::jmax<juce::int64>(0, start));
+            const int available = static_cast<int>(
+                juce::jmin<juce::int64>(info.numSamples, remaining));
             if (available <= 0)
                 continue;
             const int sourceStart = static_cast<int>(juce::jmax<juce::int64>(0, start));
@@ -2553,7 +2555,7 @@ private:
             .getChildFile("DJStudioRB").getChildFile("STEMS");
         const auto cacheName = audioFile.getFileNameWithoutExtension() + "_"
             + juce::String(audioFile.getSize()) + "_"
-            + juce::String(audioFile.getLastModificationTime().toSeconds());
+            + juce::String(audioFile.getLastModificationTime().getSeconds());
         const auto stemFolder = cacheRoot.getChildFile(cacheName);
         const juce::String stemNames[] = { "vocals", "drums", "bass", "other" };
 
