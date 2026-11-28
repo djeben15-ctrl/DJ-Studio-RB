@@ -30,6 +30,21 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(SoundTouch)
 
+# Rubber Band provides the real-time time-stretch engine for KEY LOCK.
+# It is incorporated via its supported single-file build under GPL-2.0-or-later.
+FetchContent_Declare(
+    RubberBand
+    GIT_REPOSITORY https://github.com/breakfastquay/rubberband.git
+    GIT_TAG e4296ac80b1170018a110bc326fd0d45a0eb27d6
+)
+FetchContent_GetProperties(RubberBand)
+if(NOT rubberband_POPULATED)
+    FetchContent_Populate(RubberBand)
+endif()
+
+# The single-file build uses Apple's Accelerate/vDSP implementation on macOS.
+# Keep Rubber Band source files in their upstream tree so relative includes work.
+# The app links Accelerate below.
 # The application uses float audio samples. SoundTouch itself must be compiled
 # with the same sample type; defining this only on DJStudioRB creates an ABI
 # mismatch between the app headers and the SoundTouch library implementation.
@@ -46,6 +61,11 @@ juce_add_gui_app(DJStudioRB
 target_sources(DJStudioRB
     PRIVATE
         Source/Main.cpp
+        ${rubberband_SOURCE_DIR}/single/RubberBandSingle.cpp
+)
+
+target_include_directories(DJStudioRB PRIVATE
+    ${rubberband_SOURCE_DIR}
 )
 
 target_compile_definitions(DJStudioRB
@@ -61,4 +81,5 @@ target_link_libraries(DJStudioRB
         juce::juce_audio_devices
         juce::juce_dsp
         SoundTouch
+        "-framework Accelerate"
 )
