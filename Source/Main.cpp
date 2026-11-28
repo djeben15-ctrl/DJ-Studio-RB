@@ -918,9 +918,10 @@ public:
         pitchA.onValueChange = [this]
         {
             const double percent = pitchA.getValue();
-            const double ratio = 1.0 + percent / 100.0;
+            // Inverted DJ fader response: moving PITCH upward slows playback.
+            const double ratio = 1.0 - percent / 100.0;
             pitchRatioA.store(ratio);
-            pitchSourceA.setPitchPercent(percent, keyLockA.getToggleState());
+            pitchSourceA.setPitchPercent(-percent, keyLockA.getToggleState());
             pitchValueA.setText((percent > 0.0 ? "+" : "") + juce::String(percent, 1) + "%",
                                 juce::dontSendNotification);
             if (detectedBpmA > 0.0)
@@ -930,9 +931,10 @@ public:
         pitchB.onValueChange = [this]
         {
             const double percent = pitchB.getValue();
-            const double ratio = 1.0 + percent / 100.0;
+            // Inverted DJ fader response: moving PITCH upward slows playback.
+            const double ratio = 1.0 - percent / 100.0;
             pitchRatioB.store(ratio);
-            pitchSourceB.setPitchPercent(percent, keyLockB.getToggleState());
+            pitchSourceB.setPitchPercent(-percent, keyLockB.getToggleState());
             pitchValueB.setText((percent > 0.0 ? "+" : "") + juce::String(percent, 1) + "%",
                                 juce::dontSendNotification);
             if (detectedBpmB > 0.0)
