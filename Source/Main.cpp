@@ -1626,6 +1626,10 @@ private:
     std::unique_ptr<juce::MemoryAudioSource> memorySourceA, memorySourceB;
     juce::AudioBuffer<float> scratchA, scratchB;
     std::shared_ptr<juce::AudioBuffer<float>> trackAudioA, trackAudioB;
+    // Scratch callback reads stable raw pointers only; retain decoded buffers until shutdown
+    // so no shared_ptr refcount/lock/destruction work occurs on the real-time audio thread.
+    std::vector<std::shared_ptr<juce::AudioBuffer<float>>> retainedScratchAudio;
+    std::atomic<juce::AudioBuffer<float>*> scratchAudioA{ nullptr }, scratchAudioB{ nullptr };
     std::atomic<bool> scratchingA{ false }, scratchingB{ false };
     std::atomic<double> scratchPositionA{ 0.0 }, scratchPositionB{ 0.0 };
     std::atomic<double> scratchSpeedA{ 0.0 }, scratchSpeedB{ 0.0 };
@@ -1706,9 +1710,10 @@ private:
         if (!active)
             return;
 
-        auto audio = (deckNumber == 0 ? std::atomic_load(&trackAudioA)
-                                      : std::atomic_load(&trackAudioB));
-        if (!audio || audio->getNumSamples() < 2)
+        // Never acquire/release shared_ptr on the real-time audio callback.
+        auto* audio = (deckNumber == 0 ? scratchAudioA.load(std::memory_order_acquire)
+                                       : scratchAudioB.load(std::memory_order_acquire));
+        if (audio == nullptr || audio->getNumSamples() < 2)
             return;
 
         const double sampleRate = deckNumber == 0 ? sourceSampleRateA : sourceSampleRateB;
@@ -2414,7 +2419,9 @@ private:
             transportA.stop();
             transportA.setSource(nullptr);
             memorySourceA.reset();
+            retainedScratchAudio.push_back(decodedAudio); // Keep the published raw pointer alive until shutdown.
             std::atomic_store(&trackAudioA, decodedAudio);
+            scratchAudioA.store(decodedAudio.get(), std::memory_order_release);
             sourceSampleRateA = sourceSampleRate;
             scratchingA.store(false);
             memorySourceA = std::move(newSource);
@@ -2434,7 +2441,9 @@ private:
             transportB.stop();
             transportB.setSource(nullptr);
             memorySourceB.reset();
+            retainedScratchAudio.push_back(decodedAudio); // Keep the published raw pointer alive until shutdown.
             std::atomic_store(&trackAudioB, decodedAudio);
+            scratchAudioB.store(decodedAudio.get(), std::memory_order_release);
             sourceSampleRateB = sourceSampleRate;
             scratchingB.store(false);
             memorySourceB = std::move(newSource);
