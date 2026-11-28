@@ -214,7 +214,6 @@ private:
     std::unique_ptr<RubberBand::RubberBandStretcher> rubberBand;
     juce::AudioBuffer<float> ringBuffer, inputBuffer, rubberBandOutput;
     juce::AbstractFifo outputFifo;
-    juce::AudioBuffer<float> ringBuffer, inputBuffer;
      std::atomic<double> requestedPercent{0.0};
     std::atomic<bool> preservePitch{true};
     std::atomic<unsigned int> resetRequest{0}, resetAck{0};
