@@ -8,6 +8,7 @@
 #include <limits>
 #include <vector>
 #include <algorithm>
+#include <array>
 #include <thread>
 
 
@@ -846,6 +847,67 @@ private:
     float level = 0.0f;
 };
 
+// Positionable four-stem source. It sums only enabled stems in the transport's
+// worker path, so mute toggles are atomic and require no locks or allocations
+// in the audio callback.
+class StemMixPositionableAudioSource : public juce::PositionableAudioSource
+{
+public:
+    StemMixPositionableAudioSource(
+        std::array<std::shared_ptr<juce::AudioBuffer<float>>, 4> stemBuffers,
+        std::atomic<bool>* enabledFlags)
+        : stems(std::move(stemBuffers)), enabled(enabledFlags)
+    {
+        if (stems[0] != nullptr)
+            totalSamples = stems[0]->getNumSamples();
+    }
+
+    void prepareToPlay(int, double) override {}
+    void releaseResources() override {}
+
+    void getNextAudioBlock(const juce::AudioSourceChannelInfo& info) override
+    {
+        if (info.buffer == nullptr || info.numSamples <= 0)
+            return;
+        info.clearActiveBufferRegion();
+        const auto start = readPosition.fetch_add(info.numSamples);
+        const int channels = juce::jmin(2, info.buffer->getNumChannels());
+        for (int stem = 0; stem < 4; ++stem)
+        {
+            if (!enabled[stem].load(std::memory_order_relaxed) || stems[stem] == nullptr)
+                continue;
+            const auto& source = *stems[stem];
+            const int available = juce::jmax(0, juce::jmin(info.numSamples,
+                totalSamples - static_cast<int>(juce::jmax<juce::int64>(0, start))));
+            if (available <= 0)
+                continue;
+            const int sourceStart = static_cast<int>(juce::jmax<juce::int64>(0, start));
+            for (int channel = 0; channel < channels; ++channel)
+            {
+                const int sourceChannel = juce::jmin(channel, source.getNumChannels() - 1);
+                info.buffer->addFrom(channel, info.startSample, source,
+                                     sourceChannel, sourceStart, available);
+            }
+        }
+    }
+
+    void setNextReadPosition(juce::int64 newPosition) override
+    {
+        readPosition.store(juce::jlimit<juce::int64>(0, totalSamples, newPosition));
+    }
+    juce::int64 getNextReadPosition() const override { return readPosition.load(); }
+    juce::int64 getTotalLength() const override { return totalSamples; }
+    bool isLooping() const override { return looping.load(); }
+    void setLooping(bool shouldLoop) override { looping.store(shouldLoop); }
+
+private:
+    std::array<std::shared_ptr<juce::AudioBuffer<float>>, 4> stems;
+    std::atomic<bool>* enabled = nullptr;
+    std::atomic<juce::int64> readPosition{ 0 };
+    std::atomic<bool> looping{ false };
+    juce::int64 totalSamples = 0;
+};
+
 class DJStudioRB : public juce::AudioAppComponent, private juce::Timer, public juce::FileDragAndDropTarget, public juce::MidiInputCallback
 {
 public:
@@ -1630,7 +1692,7 @@ private:
     std::atomic<double> pitchRatioA{ 1.0 }, pitchRatioB{ 1.0 };
     // Playback uses the already-decoded in-memory audio, avoiding MP3 decoding
     // on the renderer thread while SoundTouch is processing KEY LOCK.
-    std::unique_ptr<juce::MemoryAudioSource> memorySourceA, memorySourceB;
+    std::unique_ptr<juce::PositionableAudioSource> memorySourceA, memorySourceB;
     juce::AudioBuffer<float> scratchA, scratchB;
     std::shared_ptr<juce::AudioBuffer<float>> trackAudioA, trackAudioB;
     // Scratch callback reads stable raw pointers only; retain decoded buffers until shutdown
@@ -2483,6 +2545,52 @@ private:
         }).detach();
     }
 
+    std::unique_ptr<juce::PositionableAudioSource> createCachedStemSource(
+        const juce::File& audioFile, std::atomic<bool>* enabledFlags)
+    {
+        const auto cacheRoot = juce::File::getSpecialLocation(
+            juce::File::userApplicationDataDirectory)
+            .getChildFile("DJStudioRB").getChildFile("STEMS");
+        const auto cacheName = audioFile.getFileNameWithoutExtension() + "_"
+            + juce::String(audioFile.getSize()) + "_"
+            + juce::String(audioFile.getLastModificationTime().toSeconds());
+        const auto stemFolder = cacheRoot.getChildFile(cacheName);
+        const juce::String stemNames[] = { "vocals", "drums", "bass", "other" };
+
+        std::array<std::shared_ptr<juce::AudioBuffer<float>>, 4> buffers;
+        int expectedSamples = -1;
+        double expectedRate = 0.0;
+        for (int i = 0; i < 4; ++i)
+        {
+            const auto stemFile = stemFolder.getChildFile(stemNames[i] + ".wav");
+            if (!stemFile.existsAsFile())
+                return nullptr;
+            std::unique_ptr<juce::AudioFormatReader> stemReader(formatManager.createReaderFor(stemFile));
+            if (stemReader == nullptr || stemReader->lengthInSamples < 2
+                || stemReader->lengthInSamples > static_cast<juce::int64>(std::numeric_limits<int>::max()))
+                return nullptr;
+            const int samples = static_cast<int>(stemReader->lengthInSamples);
+            if (i == 0)
+            {
+                expectedSamples = samples;
+                expectedRate = stemReader->sampleRate;
+            }
+            else if (samples != expectedSamples
+                || std::abs(stemReader->sampleRate - expectedRate) > 0.5)
+                return nullptr;
+
+            buffers[static_cast<size_t>(i)] =
+                std::make_shared<juce::AudioBuffer<float>>(
+                    static_cast<int>(stemReader->numChannels), samples);
+            if (!stemReader->read(buffers[static_cast<size_t>(i)].get(),
+                                  0, samples, 0, true, true))
+                return nullptr;
+        }
+
+        return std::make_unique<StemMixPositionableAudioSource>(
+            std::move(buffers), enabledFlags);
+    }
+
     void loadTrackFromFile(int deckNumber, const juce::File& file)
     {
         std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
@@ -2544,8 +2652,12 @@ private:
         // The complete track has already been decoded into decodedAudio above.
         // Reuse that buffer for playback so MP3 decoding cannot starve the
         // SoundTouch renderer while KEY LOCK is active.
-        auto newSource = std::make_unique<juce::MemoryAudioSource>(
-            *decodedAudio, false, false);
+        auto newSource = createCachedStemSource(
+            file, deckNumber == 0 ? stemEnabledA : stemEnabledB);
+        const bool stemsReady = (newSource != nullptr);
+        if (!stemsReady)
+            newSource = std::make_unique<juce::MemoryAudioSource>(
+                *decodedAudio, false, false);
 
         if (deckNumber == 0)
         {
@@ -2595,9 +2707,12 @@ private:
         // Prepare reusable STEMS files in the background after the track loads.
         // The audio continues to use the original track until stem buffers are
         // connected and validated in the next integration stage.
-        startStemsSeparationInBackground(file);
-        status.setText("Pista cargada. STEMS: separación en segundo plano (si el motor está instalado). Pulsa PLAY para reproducir.",
-                       juce::dontSendNotification);
+        if (!stemsReady)
+            startStemsSeparationInBackground(file);
+        status.setText(stemsReady
+            ? "STEMS listos: VOCALS, DRUMS, BASS y OTHER controlan el audio. Pulsa PLAY."
+            : "Pista cargada. STEMS se están preparando en segundo plano; vuelve a cargarla cuando termine el análisis.",
+            juce::dontSendNotification);
     }
 };
 
