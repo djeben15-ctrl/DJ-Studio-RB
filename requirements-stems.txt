@@ -1,0 +1,5 @@
+# DJ Studio RB STEMS engine - legacy Intel macOS environment
+# Recommended isolated environment: Python 3.8.x (x86_64)
+spleeter==2.3.2
+tensorflow==2.5.0
+numpy==1.19.5
