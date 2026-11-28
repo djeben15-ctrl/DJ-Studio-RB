@@ -1,5 +1,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <SoundTouch.h>
+#include <rubberband/RubberBandStretcher.h>
+#include <memory>
 #include <BPMDetect.h>
 #include <cmath>
 #include <atomic>
@@ -79,7 +81,7 @@ static double estimateBpmFromEnergy(const juce::AudioBuffer<float>& audio, doubl
  * only copies already-rendered stereo frames, avoiding realtime stalls.
  *
  * KEY LOCK off: JUCE resampling (continuous tempo with changing pitch).
- * KEY LOCK on: SoundTouch time stretching (tempo changes, stable key).
+ * KEY LOCK on: Rubber Band real-time time stretching (tempo changes, stable key).
  */
 class PitchTempoSource : public juce::AudioSource, private juce::Thread
 {
@@ -100,26 +102,23 @@ public:
         stopThread(3000);
         outputFifo.reset();
         ringBuffer.setSize(2, fifoCapacity, false, true, true);
-        inputBuffer.setSize(2, 8192, false, true, true);
-        // Keep enough preallocated space for larger SoundTouch batches. Larger
-        // batches reduce worker wakeups and help maintain realtime output on older Intel Macs.
-        interleavedInput.resize(8192 * 2);
-        interleavedOutput.resize(8192 * 2);
+        inputBuffer.setSize(2, 2048, false, true, true);
+        rubberBandOutput.setSize(2, 8192, false, true, true);
         resampler.setResamplingRatio(1.0);
         resampler.prepareToPlay(juce::jmax(2048, samplesPerBlockExpected), sampleRate);
-        processor.clear();
-        processor.setChannels(2);
-        processor.setSampleRate(static_cast<unsigned int>(sampleRate));
-        // Use SoundTouch's conventional short-window settings for live DJ
-        // tempo changes. The previous 64/20/16 ms windows produced excessive
-        // overlap and could smear transients or create chirping at small pitch
-        // movements. Keep QuickSeek disabled for the more accurate search.
-        processor.setSetting(SETTING_USE_QUICKSEEK, 0);
-        processor.setSetting(SETTING_SEQUENCE_MS, 40);
-        processor.setSetting(SETTING_SEEKWINDOW_MS, 15);
-        processor.setSetting(SETTING_OVERLAP_MS, 8);
-        processor.setTempoChange(0.0);
-        processor.setRateChange(0.0);
+
+        // Rubber Band real-time stretcher: tempo changes while pitch remains fixed.
+        // Use the lower-CPU R2 engine for compatibility with older Intel Macs.
+        const auto options = RubberBand::RubberBandStretcher::OptionProcessRealTime
+                           | RubberBand::RubberBandStretcher::OptionEngineFaster
+                           | RubberBand::RubberBandStretcher::OptionChannelsTogether
+                           | RubberBand::RubberBandStretcher::OptionTransientsCrisp
+                           | RubberBand::RubberBandStretcher::OptionThreadingNever;
+        rubberBand.reset(new RubberBand::RubberBandStretcher(
+            static_cast<size_t>(sampleRate), 2, options, 1.0, 1.0));
+        rubberBand->setMaxProcessSize(2048);
+        rubberBand->setTimeRatio(1.0);
+        rubberBand->setPitchScale(1.0);
         currentMode = -1;
         appliedPercent = 0.0;
         appliedKeyLock = preservePitch.load();
@@ -135,7 +134,7 @@ public:
     {
         stopThread(3000);
         outputFifo.reset();
-        processor.clear();
+        rubberBand.reset();
         resampler.releaseResources();
     }
 
@@ -212,11 +211,11 @@ private:
     static constexpr int targetBuffered = 16384;
     juce::AudioTransportSource& transport;
     juce::ResamplingAudioSource resampler;
-    soundtouch::SoundTouch processor;
+    std::unique_ptr<RubberBand::RubberBandStretcher> rubberBand;
+    juce::AudioBuffer<float> ringBuffer, inputBuffer, rubberBandOutput;
     juce::AbstractFifo outputFifo;
     juce::AudioBuffer<float> ringBuffer, inputBuffer;
-    std::vector<soundtouch::SAMPLETYPE> interleavedInput, interleavedOutput;
-    std::atomic<double> requestedPercent{0.0};
+     std::atomic<double> requestedPercent{0.0};
     std::atomic<bool> preservePitch{true};
     std::atomic<unsigned int> resetRequest{0}, resetAck{0};
     std::atomic<int> underrunCount{0};
@@ -274,29 +273,7 @@ private:
         outputFifo.finishedWrite(n1 + n2);
     }
 
-    void queueInterleaved(const soundtouch::SAMPLETYPE* block, int count)
-    {
-        const int amount = juce::jmin(count, outputFifo.getFreeSpace());
-        if (amount <= 0)
-            return;
-        int s1 = 0, n1 = 0, s2 = 0, n2 = 0;
-        outputFifo.prepareToWrite(amount, s1, n1, s2, n2);
-        for (int i = 0; i < amount; ++i)
-        {
-            const int destination = i < n1 ? s1 + i : s2 + i - n1;
-            const int fading = edgeFadeRemaining;
-            for (int ch = 0; ch < 2; ++ch)
-            {
-                const float v = blendTransition(ch, block[i * 2 + ch], fading);
-                ringBuffer.setSample(ch, destination, v);
-                previousOutput[ch] = v;
-            }
-            if (edgeFadeRemaining > 0)
-                --edgeFadeRemaining;
-        }
-        outputFifo.finishedWrite(n1 + n2);
-    }
-
+ 
     void renderOnce(int mode)
     {
         if (mode == 0)
@@ -309,36 +286,30 @@ private:
             return;
         }
 
-        // Preserve musical key only when Key Lock AND a pitch change are active.
-        // The worker may need several blocks of input before SoundTouch returns
-        // its first batch; the already-buffered audio bridges that transition.
-        // Keep SoundTouch's internal output queue primed. Feeding only when it
-        // reaches exactly zero lets its FIFO run dry between blocks on some
-        // Intel Macs, which is heard as silence/cut-outs when Key Lock is on.
-        // Smaller slices let live tempo changes reach SoundTouch more often.
-        // This avoids large, abrupt processing bursts while the pitch control moves.
-        // Use shorter processing slices so live tempo updates are applied
-        // more frequently and with smaller audible steps.
-        constexpr int soundTouchBlock = 2048;
-        int ready = static_cast<int>(processor.numSamples());
-        for (int tries = 0; ready < soundTouchBlock && tries < 4; ++tries)
+        constexpr int rubberBandBlock = 2048;
+        juce::AudioSourceChannelInfo block(&inputBuffer, 0, rubberBandBlock);
+        resampler.getNextAudioBlock(block);
+
+        const float* inputChannels[2] = {
+            inputBuffer.getReadPointer(0), inputBuffer.getReadPointer(1)
+        };
+        rubberBand->process(inputChannels, static_cast<size_t>(rubberBandBlock), false);
+
+        // Drain all currently available stretched frames into the prepared FIFO.
+        // Rubber Band may return a different frame count from the input because
+        // tempo is changed independently of pitch.
+        int available = rubberBand->available();
+        while (available > 0 && outputFifo.getFreeSpace() > 0)
         {
-            juce::AudioSourceChannelInfo block(&inputBuffer, 0, soundTouchBlock);
-            resampler.getNextAudioBlock(block);
-            for (int i = 0; i < soundTouchBlock; ++i)
-            {
-                interleavedInput[static_cast<size_t>(i) * 2] = inputBuffer.getSample(0, i);
-                interleavedInput[static_cast<size_t>(i) * 2 + 1] = inputBuffer.getSample(1, i);
-            }
-            processor.putSamples(interleavedInput.data(), soundTouchBlock);
-            ready = static_cast<int>(processor.numSamples());
-        }
-        const int frames = juce::jmin(soundTouchBlock, juce::jmin(ready, outputFifo.getFreeSpace()));
-        if (frames > 0)
-        {
-            const unsigned int done = processor.receiveSamples(interleavedOutput.data(),
-                                                               static_cast<unsigned int>(frames));
-            queueInterleaved(interleavedOutput.data(), static_cast<int>(done));
+            const int request = juce::jmin(available, rubberBandOutput.getNumSamples());
+            float* outputChannels[2] = {
+                rubberBandOutput.getWritePointer(0), rubberBandOutput.getWritePointer(1)
+            };
+            const size_t received = rubberBand->retrieve(outputChannels, static_cast<size_t>(request));
+            if (received == 0)
+                break;
+            queueAudio(rubberBandOutput, static_cast<int>(received));
+            available = rubberBand->available();
         }
     }
 
@@ -351,7 +322,7 @@ private:
                 if (currentMode != -1)
                 {
                     currentMode = -1;
-                    processor.clear();
+                    if (rubberBand != nullptr) rubberBand->reset();
                 }
                 wait(5);
                 continue;
@@ -360,7 +331,7 @@ private:
             const auto requestedReset = resetRequest.load();
             if (requestedReset != lastHandledReset)
             {
-                processor.clear();
+                if (rubberBand != nullptr) rubberBand->reset();
                 currentMode = -1;
                 lastHandledReset = requestedReset;
                 resetAck.store(requestedReset);
@@ -387,14 +358,17 @@ private:
                 edgeFadeRemaining = fadeLength;
                 if (mode == 1)
                 {
-                    processor.clear();
+                    if (rubberBand != nullptr)
+                    {
+                        rubberBand->reset();
+                        rubberBand->setPitchScale(1.0);
+                        rubberBand->setTimeRatio(1.0 / (1.0 + pitch / 100.0));
+                    }
                     resampler.setResamplingRatio(1.0);
-                    processor.setRateChange(0.0);
-                    processor.setTempoChange(pitch);
                 }
                 else
                 {
-                    processor.clear();
+                    if (rubberBand != nullptr) rubberBand->reset();
                     resampler.setResamplingRatio(1.0 + pitch / 100.0);
                 }
                 appliedPercent = pitch;
@@ -408,11 +382,11 @@ private:
                 const double difference = pitch - appliedPercent;
                 if (std::abs(difference) >= 0.01)
                 {
-                    // Apply smaller tempo increments to avoid audible steps
-                    // in SoundTouch's overlap/add processing while the slider moves.
-                    appliedPercent += juce::jlimit(-0.05, 0.05, difference);
-                    processor.setRateChange(0.0);
-                    processor.setTempoChange(appliedPercent);
+                    // Slew tempo ratio smoothly on the worker thread. Rubber Band
+                    // supports real-time ratio changes without restarting its state.
+                    appliedPercent += juce::jlimit(-0.10, 0.10, difference);
+                    if (rubberBand != nullptr)
+                        rubberBand->setTimeRatio(1.0 / (1.0 + appliedPercent / 100.0));
                 }
                 appliedKeyLock = locked;
             }
