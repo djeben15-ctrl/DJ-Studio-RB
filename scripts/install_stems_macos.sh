@@ -31,6 +31,10 @@ source "$VENV/bin/activate"
 python -m pip install --upgrade "pip<24.1" "setuptools<70" wheel
 python -m pip install -r "$ROOT/requirements-stems.txt"
 
+APP_SUPPORT="$HOME/Library/Application Support/DJStudioRB/scripts"
+mkdir -p "$APP_SUPPORT"
+cp "$ROOT/scripts/stems.py" "$APP_SUPPORT/stems.py"
+
 python - <<'PY'
 from spleeter.separator import Separator
 Separator("spleeter:4stems", multiprocess=False)
