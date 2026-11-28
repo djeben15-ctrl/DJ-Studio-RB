@@ -1464,7 +1464,7 @@ public:
         const int modesY = padsY - 32;
         const int loopY = modesY - 34;
         const int jogY = loopY - 154;
-        const int transportY = jogY - 43;
+        const int transportY = jogY - 70;
         const int innerLeftA = margin + 22;
         const int innerLeftB = deckBX + 22;
         const int innerWidth = deckW - 44;
@@ -1488,7 +1488,7 @@ public:
         pitchRangeA.setBounds(margin + deckW - 130, deckY + 50, 108, 22);
         keyLockA.setBounds(margin + deckW - 130, deckY + 23, 108, 24);
         // Put the BPM readout beside the A platter for quick visual reference.
-        bpmLabelA.setBounds(centerX_A - 70, jogY - 20, 140, 20);
+        bpmLabelA.setBounds(centerX_A - 105, jogY - 30, 210, 20);
         const int loopWidthA = 252;
         const int loopStartA = margin + (deckW - loopWidthA) / 2;
         loopInButtonA.setBounds(loopStartA, loopY, 76, 28);
@@ -1512,7 +1512,7 @@ public:
         pitchRangeB.setBounds(deckBX + deckW - 130, deckY + 50, 108, 22);
         keyLockB.setBounds(deckBX + deckW - 130, deckY + 23, 108, 24);
         // Put the BPM readout beside the B platter for quick visual reference.
-        bpmLabelB.setBounds(centerX_B - 70, jogY - 20, 140, 20);
+        bpmLabelB.setBounds(centerX_B - 105, jogY - 30, 210, 20);
         const int loopStartB = deckBX + (deckW - loopWidthA) / 2;
         loopInButtonB.setBounds(loopStartB, loopY, 76, 28);
         loopOutButtonB.setBounds(loopStartB + 82, loopY, 76, 28);
