@@ -1,0 +1,6 @@
+# Tested target: Intel macOS 10.13 with Python 3.8.
+# Keep TensorFlow/NumPy pinned for legacy High Sierra wheel compatibility.
+spleeter==2.4.0
+tensorflow==2.5.0
+numpy==1.19.5
+protobuf<4
