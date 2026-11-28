@@ -2367,6 +2367,50 @@ private:
             });
     }
 
+    juce::File getTrackAnalysisCacheFile(const juce::File& audioFile) const
+    {
+        auto cacheDirectory = juce::File::getSpecialLocation(
+            juce::File::userApplicationDataDirectory)
+            .getChildFile("DJStudioRB").getChildFile("TrackAnalysis");
+        cacheDirectory.createDirectory();
+        const auto cacheKey = juce::String(audioFile.getFullPathName().hashCode());
+        return cacheDirectory.getChildFile(cacheKey + ".analysis");
+    }
+
+    double loadCachedTrackBpm(const juce::File& audioFile) const
+    {
+        const auto cacheFile = getTrackAnalysisCacheFile(audioFile);
+        if (!cacheFile.existsAsFile())
+            return 0.0;
+
+        const auto lines = juce::StringArray::fromLines(cacheFile.loadFileAsString());
+        if (lines.size() < 4)
+            return 0.0;
+
+        const auto modified = audioFile.getLastModificationTime().toMilliseconds();
+        if (lines[0] != audioFile.getFullPathName()
+            || lines[1].getLargeIntValue() != audioFile.getSize()
+            || lines[2].getLargeIntValue() != modified)
+            return 0.0;
+
+        const double bpm = lines[3].getDoubleValue();
+        return (std::isfinite(bpm) && bpm >= 60.0 && bpm <= 200.0) ? bpm : 0.0;
+    }
+
+    void saveCachedTrackBpm(const juce::File& audioFile, double bpm) const
+    {
+        if (!std::isfinite(bpm) || bpm < 60.0 || bpm > 200.0)
+            return;
+
+        const auto cacheFile = getTrackAnalysisCacheFile(audioFile);
+        juce::StringArray lines;
+        lines.add(audioFile.getFullPathName());
+        lines.add(juce::String(audioFile.getSize()));
+        lines.add(juce::String(audioFile.getLastModificationTime().toMilliseconds()));
+        lines.add(juce::String(bpm, 3));
+        cacheFile.replaceWithText(lines.joinIntoString("\\n"));
+    }
+
     void loadTrackFromFile(int deckNumber, const juce::File& file)
     {
         std::unique_ptr<juce::AudioFormatReader> reader(formatManager.createReaderFor(file));
@@ -2394,30 +2438,36 @@ private:
             return;
         }
 
-        // Analyze the decoded track once, off the audio callback, to show its original BPM.
-        double detectedBpm = 0.0;
-        const int bpmChannels = juce::jmin(2, decodedAudio->getNumChannels());
-        if (bpmChannels > 0)
+        // Reuse saved Track Analysis when the source file has not changed.
+        // This skips the expensive BPM scan on subsequent loads.
+        double detectedBpm = loadCachedTrackBpm(file);
+        if (detectedBpm <= 0.0)
         {
-            soundtouch::BPMDetect detector(bpmChannels, static_cast<int>(sourceSampleRate));
-            constexpr int bpmChunk = 4096;
-            std::vector<soundtouch::SAMPLETYPE> interleaved(static_cast<size_t>(bpmChunk) * bpmChannels);
-            for (int offset = 0; offset < decodedSamples; offset += bpmChunk)
+            // Analyze once on the loading thread, never on the real-time audio callback.
+            const int bpmChannels = juce::jmin(2, decodedAudio->getNumChannels());
+            if (bpmChannels > 0)
             {
-                const int count = juce::jmin(bpmChunk, decodedSamples - offset);
-                for (int i = 0; i < count; ++i)
-                    for (int ch = 0; ch < bpmChannels; ++ch)
-                        interleaved[static_cast<size_t>(i) * bpmChannels + ch] =
-                            decodedAudio->getSample(ch, offset + i);
-                detector.inputSamples(interleaved.data(), count);
+                soundtouch::BPMDetect detector(bpmChannels, static_cast<int>(sourceSampleRate));
+                constexpr int bpmChunk = 4096;
+                std::vector<soundtouch::SAMPLETYPE> interleaved(static_cast<size_t>(bpmChunk) * bpmChannels);
+                for (int offset = 0; offset < decodedSamples; offset += bpmChunk)
+                {
+                    const int count = juce::jmin(bpmChunk, decodedSamples - offset);
+                    for (int i = 0; i < count; ++i)
+                        for (int ch = 0; ch < bpmChannels; ++ch)
+                            interleaved[static_cast<size_t>(i) * bpmChannels + ch] =
+                                decodedAudio->getSample(ch, offset + i);
+                    detector.inputSamples(interleaved.data(), count);
+                }
+                detectedBpm = detector.getBpm();
             }
-            detectedBpm = detector.getBpm();
-        }
 
-        // SoundTouch BPMDetect can return zero for some decoded MP3 material.
-        // Fall back to an independent energy-onset autocorrelation estimate.
-        if (!std::isfinite(detectedBpm) || detectedBpm < 60.0 || detectedBpm > 200.0)
-            detectedBpm = estimateBpmFromEnergy(*decodedAudio, sourceSampleRate);
+            // Fallback for files where SoundTouch cannot estimate BPM.
+            if (!std::isfinite(detectedBpm) || detectedBpm < 60.0 || detectedBpm > 200.0)
+                detectedBpm = estimateBpmFromEnergy(*decodedAudio, sourceSampleRate);
+
+            saveCachedTrackBpm(file, detectedBpm);
+        }
 
         // The complete track has already been decoded into decodedAudio above.
         // Reuse that buffer for playback so MP3 decoding cannot starve the
