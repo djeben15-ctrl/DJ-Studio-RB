@@ -1610,7 +1610,11 @@ public:
         mixerLabel.setBounds(mixerX + 12, my(658), mixerW - 24, mh(18));
         mixerLabel.setJustificationType(juce::Justification::centred);
         crossfader.setBounds(crossfaderX, my(674), crossfaderWidth, mh(20));
-        audioDiagnostic.setBounds(margin, 712, w - 2 * margin, 22);
+        // Keep the diagnostic in the clear strip above the deck panels.
+        // The previous bottom placement overlapped the hot-cue area and could
+        // be hidden by the compact layout on macOS High Sierra.
+        audioDiagnostic.setBounds(margin, 205, w - 2 * margin, 22);
+        audioDiagnostic.toFront(false);
         status.setBounds(margin, 740, w - 2 * margin, 25);
     }
 private:
