@@ -1698,6 +1698,9 @@ private:
     juce::TextButton loopInButtonA{"IN"}, loopOutButtonA{"OUT"}, reloopButtonA{"RELOOP"};
     juce::TextButton loopInButtonB{"IN"}, loopOutButtonB{"OUT"}, reloopButtonB{"RELOOP"};
     int activePadModeA = 0, activePadModeB = 0;
+    // Per-deck STEMS toggles; audio routing will consume these once stem buffers are loaded.
+    std::atomic<bool> stemEnabledA[4] = { true, true, true, true };
+    std::atomic<bool> stemEnabledB[4] = { true, true, true, true };
     double hotCuePositionsA[8] = { -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0 };
     double hotCuePositionsB[8] = { -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0 };
     double loopInA = 0.0, loopOutA = 0.0, loopInB = 0.0, loopOutB = 0.0;
@@ -1972,7 +1975,7 @@ private:
                                        juce::TextButton& loopIn, juce::TextButton& loopOut,
                                        juce::TextButton& reloop, int deckNumber)
         {
-            const juce::String names[] = { "HOT CUE", "PAD FX1", "SLICER", "SAMPLER" };
+            const juce::String names[] = { "HOT CUE", "PAD FX1", "STEMS", "SAMPLER" };
             for (int i = 0; i < 4; ++i)
             {
                 modes[i].setButtonText(names[i]);
@@ -1985,8 +1988,33 @@ private:
                 {
                     for (int j = 0; j < 4; ++j) modes[j].setToggleState(j == i, juce::dontSendNotification);
                     (deckNumber == 0 ? activePadModeA : activePadModeB) = i;
-                    status.setText("DECK " + juce::String(deckNumber == 0 ? "A" : "B")
-                        + ": modo " + modes[i].getButtonText() + ".", juce::dontSendNotification);
+                    if (i == 2)
+                    {
+                        for (int pad = 0; pad < 8; ++pad)
+                        {
+                            const juce::String stemNames[] = {
+                                "VOCALS", "DRUMS", "BASS", "OTHER", "", "", "", ""
+                            };
+                            pads[pad].setButtonText(stemNames[pad]);
+                            pads[pad].setEnabled(pad < 4);
+                            pads[pad].setToggleState(pad < 4
+                                ? (deckNumber == 0 ? stemEnabledA[pad].load() : stemEnabledB[pad].load())
+                                : false, juce::dontSendNotification);
+                        }
+                        status.setText("DECK " + juce::String(deckNumber == 0 ? "A" : "B")
+                            + ": STEMS seleccionado. Motor de audio en integración.", juce::dontSendNotification);
+                    }
+                    else
+                    {
+                        for (int pad = 0; pad < 8; ++pad)
+                        {
+                            pads[pad].setButtonText(juce::String(pad + 1));
+                            pads[pad].setEnabled(true);
+                            pads[pad].setToggleState(false, juce::dontSendNotification);
+                        }
+                        status.setText("DECK " + juce::String(deckNumber == 0 ? "A" : "B")
+                            + ": modo " + modes[i].getButtonText() + ".", juce::dontSendNotification);
+                    }
                 };
             }
             for (int i = 0; i < 8; ++i)
@@ -1998,9 +2026,25 @@ private:
                 addAndMakeVisible(pads[i]);
                 pads[i].onClick = [this, pads, deckNumber, i]
                 {
-                    if ((deckNumber == 0 ? activePadModeA : activePadModeB) != 0)
+                    const int activeMode = (deckNumber == 0 ? activePadModeA : activePadModeB);
+                    if (activeMode == 2)
                     {
-                        status.setText("PAD FX1, SLICER y SAMPLER: mapeo funcional pendiente.",
+                        if (i >= 4)
+                            return;
+                        auto& enabled = (deckNumber == 0 ? stemEnabledA[i] : stemEnabledB[i]);
+                        const bool nextState = !enabled.load();
+                        enabled.store(nextState);
+                        pads[i].setToggleState(nextState, juce::dontSendNotification);
+                        const juce::String stemNames[] = { "VOCALS", "DRUMS", "BASS", "OTHER" };
+                        status.setText("DECK " + juce::String(deckNumber == 0 ? "A" : "B")
+                            + " STEM " + stemNames[i] + (nextState ? " activado." : " silenciado.")
+                            + " (controles visuales; conexión de audio pendiente).",
+                            juce::dontSendNotification);
+                        return;
+                    }
+                    if (activeMode != 0)
+                    {
+                        status.setText("PAD FX1 y SAMPLER: mapeo funcional pendiente.",
                                        juce::dontSendNotification);
                         return;
                     }
