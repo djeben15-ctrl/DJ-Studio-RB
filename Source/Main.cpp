@@ -1086,7 +1086,8 @@ public:
         libraryPanel.setVisible(false);
 
         // A 30 Hz UI refresh reduces message-thread load on older Intel Macs.
-        startTimerHz(30);
+        // Poll scratch handoff frequently so the deck resumes with minimal latency.
+        startTimerHz(120);
     }
 
     ~DJStudioRB() override
@@ -1640,7 +1641,7 @@ private:
     std::atomic<double> scratchSpeedA{ 0.0 }, scratchSpeedB{ 0.0 };
     double outputSampleRate = 44100.0;
     double sourceSampleRateA = 44100.0, sourceSampleRateB = 44100.0;
-    static constexpr int jogFadeLength = 240; // about 5 ms at 48 kHz: click protection without an audible pause
+    static constexpr int jogFadeLength = 48; // about 1 ms at 48 kHz: minimal click protection for near-immediate handoff
     std::atomic<double> jogPendingPositionA{ 0.0 }, jogPendingPositionB{ 0.0 };
     std::atomic<bool> jogSeekRequestedA{ false }, jogSeekRequestedB{ false };
     std::atomic<bool> jogSeekReadyA{ false }, jogSeekReadyB{ false };
