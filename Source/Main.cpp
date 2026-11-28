@@ -1984,7 +1984,7 @@ private:
                 modes[i].setColour(juce::TextButton::textColourOffId, juce::Colours::white);
                 modes[i].setColour(juce::TextButton::textColourOnId, juce::Colour(35, 220, 205));
                 addAndMakeVisible(modes[i]);
-                modes[i].onClick = [this, modes, deckNumber, i]
+                modes[i].onClick = [this, modes, pads, deckNumber, i]
                 {
                     for (int j = 0; j < 4; ++j) modes[j].setToggleState(j == i, juce::dontSendNotification);
                     (deckNumber == 0 ? activePadModeA : activePadModeB) = i;
