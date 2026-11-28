@@ -7,6 +7,10 @@ on:
     paths:
       - 'CMakeLists.txt'
       - 'Source/**'
+      - 'scripts/**'
+      - 'requirements-stems.txt'
+      - 'Instalar STEMS.command'
+      - 'README-STEMS-AUTO-INSTALL.md'
       - '.github/workflows/build-macos.yml'
 
 permissions:
@@ -35,10 +39,14 @@ jobs:
         run: |
           APP_PATH="build/DJStudioRB_artefacts/Release/DJ Studio RB.app"
           test -d "$APP_PATH"
-          mkdir -p dist
-          # ZIP the complete .app bundle with macOS resource forks and metadata.
-          # This avoids hdiutil failures such as "Resource busy" on hosted runners.
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" \
+          mkdir -p dist/package
+          cp -R "$APP_PATH" dist/package/
+          mkdir -p dist/package/scripts
+          cp scripts/stems.py scripts/install_stems_macos.sh dist/package/scripts/
+          cp requirements-stems.txt "Instalar STEMS.command" README-STEMS-AUTO-INSTALL.md dist/package/
+          chmod +x dist/package/"Instalar STEMS.command" dist/package/scripts/install_stems_macos.sh
+          # Include the app and the first-run STEMS installer in one distributable ZIP.
+          ditto -c -k --sequesterRsrc --keepParent dist/package \
             "dist/DJ-Studio-RB-macOS-Intel.zip"
 
       - name: Upload installer
