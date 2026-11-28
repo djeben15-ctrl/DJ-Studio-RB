@@ -478,7 +478,13 @@ public:
         lastDragTime = now;
         if (onScratchMove)
             onScratchMove(position, speed);
-        repaint();
+        // Avoid flooding the message queue with repaint requests during fast platter drags.
+        const auto repaintNow = juce::Time::getMillisecondCounter();
+        if (repaintNow - lastRepaintTimeMs >= 33)
+        {
+            lastRepaintTimeMs = repaintNow;
+            repaint();
+        }
     }
 
     void mouseUp(const juce::MouseEvent&) override
@@ -495,6 +501,7 @@ private:
     double startAngle = 0.0;
     bool dragging = false;
     double lastDragTime = 0.0;
+    uint32_t lastRepaintTimeMs = 0;
 
     double angleAt(juce::Point<float> point) const
     {
@@ -1073,7 +1080,8 @@ public:
         addAndMakeVisible(libraryPanel);
         libraryPanel.setVisible(false);
 
-        startTimerHz(60);
+        // A 30 Hz UI refresh reduces message-thread load on older Intel Macs.
+        startTimerHz(30);
     }
 
     ~DJStudioRB() override
@@ -1490,7 +1498,7 @@ public:
         keyLockA.setBounds(margin + deckW - 130, deckY + 23, 108, 24);
         // Put the BPM readout beside the A platter for quick visual reference.
         bpmLabelA.setJustificationType(juce::Justification::centred);
-        bpmLabelA.setFont(juce::Font(9.0f, juce::Font::bold));
+        bpmLabelA.setFont(juce::Font(13.0f, juce::Font::bold));
         bpmLabelA.setBounds(centerX_A, jogY + 65, 150, 20);
         bpmLabelA.toFront(false);
         const int loopWidthA = 252;
@@ -1518,7 +1526,7 @@ public:
         keyLockB.setBounds(deckBX + deckW - 130, deckY + 23, 108, 24);
         // Put the BPM readout beside the B platter for quick visual reference.
         bpmLabelB.setJustificationType(juce::Justification::centred);
-        bpmLabelB.setFont(juce::Font(9.0f, juce::Font::bold));
+        bpmLabelB.setFont(juce::Font(13.0f, juce::Font::bold));
         bpmLabelB.setBounds(centerX_B, jogY + 65, 150, 20);
         bpmLabelB.toFront(false);
         const int loopStartB = deckBX + (deckW - loopWidthA) / 2;
