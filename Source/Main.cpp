@@ -922,7 +922,8 @@ public:
             const double ratio = 1.0 - percent / 100.0;
             pitchRatioA.store(ratio);
             pitchSourceA.setPitchPercent(-percent, keyLockA.getToggleState());
-            pitchValueA.setText((percent > 0.0 ? "+" : "") + juce::String(percent, 1) + "%",
+            const double displayPercent = -percent;
+            pitchValueA.setText((displayPercent > 0.0 ? "+" : "") + juce::String(displayPercent, 1) + "%",
                                 juce::dontSendNotification);
             if (detectedBpmA > 0.0)
                 bpmLabelA.setText("BPM: " + juce::String(detectedBpmA, 1) + "  |  ACTUAL: " +
@@ -935,7 +936,8 @@ public:
             const double ratio = 1.0 - percent / 100.0;
             pitchRatioB.store(ratio);
             pitchSourceB.setPitchPercent(-percent, keyLockB.getToggleState());
-            pitchValueB.setText((percent > 0.0 ? "+" : "") + juce::String(percent, 1) + "%",
+            const double displayPercent = -percent;
+            pitchValueB.setText((displayPercent > 0.0 ? "+" : "") + juce::String(displayPercent, 1) + "%",
                                 juce::dontSendNotification);
             if (detectedBpmB > 0.0)
                 bpmLabelB.setText("BPM: " + juce::String(detectedBpmB, 1) + "  |  ACTUAL: " +
