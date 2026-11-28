@@ -1490,8 +1490,9 @@ public:
         keyLockA.setBounds(margin + deckW - 130, deckY + 23, 108, 24);
         // Put the BPM readout beside the A platter for quick visual reference.
         bpmLabelA.setJustificationType(juce::Justification::centred);
-        bpmLabelA.setFont(juce::Font(11.0f, juce::Font::bold));
-        bpmLabelA.setBounds(centerX_A + 8, jogY + 65, 134, 22);
+        bpmLabelA.setFont(juce::Font(9.0f, juce::Font::bold));
+        bpmLabelA.setBounds(centerX_A, jogY + 65, 150, 20);
+        bpmLabelA.toFront(false);
         const int loopWidthA = 252;
         const int loopStartA = margin + (deckW - loopWidthA) / 2;
         loopInButtonA.setBounds(loopStartA, loopY, 76, 28);
@@ -1517,8 +1518,9 @@ public:
         keyLockB.setBounds(deckBX + deckW - 130, deckY + 23, 108, 24);
         // Put the BPM readout beside the B platter for quick visual reference.
         bpmLabelB.setJustificationType(juce::Justification::centred);
-        bpmLabelB.setFont(juce::Font(11.0f, juce::Font::bold));
-        bpmLabelB.setBounds(centerX_B + 8, jogY + 65, 134, 22);
+        bpmLabelB.setFont(juce::Font(9.0f, juce::Font::bold));
+        bpmLabelB.setBounds(centerX_B, jogY + 65, 150, 20);
+        bpmLabelB.toFront(false);
         const int loopStartB = deckBX + (deckW - loopWidthA) / 2;
         loopInButtonB.setBounds(loopStartB, loopY, 76, 28);
         loopOutButtonB.setBounds(loopStartB + 82, loopY, 76, 28);
